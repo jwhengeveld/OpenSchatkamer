@@ -81,16 +81,25 @@ Schatkamer/
 - **Android SDK**: `compileSdk = 35`, `minSdk = 26`
 - **Gradle**: 8.10.2 (meegeleverd via Gradle Wrapper)
 
-### Debug APK bouwen
+### Debug & Release APK bouwen
 ```bash
+# Debug APK's bouwen
 ./gradlew assembleDebug
+
+# Release APK's bouwen (ondertekend met R8 optimalisatie)
+./gradlew assembleRelease
+
+# Release App Bundles (.aab) voor Google Play
+./gradlew bundleRelease
 ```
 
 > **Opmerking macOS:** Bij bouwen op externe volumes (zoals `/Volumes/...`) worden de build-outputs automatisch omgeleid naar `~/.builds/Schatkamer/` om AppleDouble metadata corruptie te voorkomen.
 
 Locatie van de gegenereerde APK's:
-- **Android TV**: `~/.builds/Schatkamer/app/outputs/apk/debug/app-debug.apk`
-- **Android Mobile**: `~/.builds/Schatkamer/mobile/outputs/apk/debug/mobile-debug.apk`
+- **Android TV (Release)**: `~/.builds/Schatkamer/app/outputs/apk/release/app-release.apk`
+- **Android Mobile (Release)**: `~/.builds/Schatkamer/mobile/outputs/apk/release/mobile-release.apk`
+- **Android TV (Debug)**: `~/.builds/Schatkamer/app/outputs/apk/debug/app-debug.apk`
+- **Android Mobile (Debug)**: `~/.builds/Schatkamer/mobile/outputs/apk/debug/mobile-debug.apk`
 
 ### Installeren via ADB
 
