@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SchatkamerTV" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#111218</item>
+        <item name="android:colorPrimary">#05C8F0</item>
+        <item name="android:colorAccent">#FF00BC</item>
+    </style>
+
+    <style name="Theme.SchatkamerTV.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#111218</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_emblem</item>
+        <item name="postSplashScreenTheme">@style/Theme.SchatkamerTV</item>
+    </style>
+</resources>
