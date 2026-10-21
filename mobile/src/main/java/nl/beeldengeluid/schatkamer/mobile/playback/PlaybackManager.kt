@@ -81,6 +81,7 @@ class PlaybackManager(
 
     private fun attachCast(castContext: CastContext) {
         val cp = CastPlayer(castContext, SchatkamerMediaItemConverter())
+        cp.addListener(playerListener)
         cp.setSessionAvailabilityListener(object : SessionAvailabilityListener {
             override fun onCastSessionAvailable() {
                 switchToCast()
@@ -209,6 +210,15 @@ class PlaybackManager(
         try {
             appContext.stopService(Intent(appContext, SchatkamerPlaybackService::class.java))
         } catch (_: Exception) {}
+    }
+
+    fun stopCasting() {
+        runCatching {
+            CastContext.getSharedInstance(appContext, androidx.core.content.ContextCompat.getMainExecutor(appContext))
+                .addOnSuccessListener { castContext ->
+                    castContext.sessionManager.endCurrentSession(true)
+                }
+        }
     }
 
     private fun activePlayer(): Player {

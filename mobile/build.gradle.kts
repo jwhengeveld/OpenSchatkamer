@@ -16,7 +16,7 @@ val hasReleaseSigning = keystoreProperties.getProperty("storeFile") != null
 
 val castReceiverId: String =
     (project.findProperty("schatkamer.castReceiverId") as String?)?.takeIf { it.isNotBlank() }
-        ?: "377B8439" // Officiële Chromecast Receiver ID van De Schatkamer Beeld & Geluid
+        ?: "CC1AD845" // Google Default Media Receiver (werkt standaard op alle Chromecasts en Google TV's)
 
 android {
     namespace = "nl.beeldengeluid.schatkamer.mobile"
@@ -27,8 +27,8 @@ android {
         resValue("string", "app_name", "De Schatkamer")
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         buildConfigField("String", "CAST_RECEIVER_ID", "\"$castReceiverId\"")
     }

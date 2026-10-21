@@ -5,7 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -44,6 +44,7 @@ import androidx.lifecycle.ViewModelProvider
 import nl.beeldengeluid.schatkamer.brand.SchatkamerSplash
 import nl.beeldengeluid.schatkamer.core.data.PlayableMedia
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerItem
+import nl.beeldengeluid.schatkamer.mobile.cast.CastAvailability
 import nl.beeldengeluid.schatkamer.mobile.playback.PlaybackManager
 import nl.beeldengeluid.schatkamer.mobile.ui.DiscoverViewModel
 import nl.beeldengeluid.schatkamer.mobile.ui.HomeViewModel
@@ -63,7 +64,7 @@ import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerDarkElevated
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerTextMuted
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     private val app by lazy { application as SchatkamerMobileApp }
 
@@ -85,6 +86,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        CastAvailability.discoverWhileStarted(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
