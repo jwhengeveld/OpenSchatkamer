@@ -60,6 +60,8 @@ import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
 import nl.beeldengeluid.schatkamer.core.data.PlayableMedia
 import nl.beeldengeluid.schatkamer.tv.R
+import nl.beeldengeluid.schatkamer.tv.receiver.TvCastManager
+import nl.beeldengeluid.schatkamer.tv.receiver.TvControlCommand
 import nl.beeldengeluid.schatkamer.tv.ui.player.buildTvPlayer
 import nl.beeldengeluid.schatkamer.tv.ui.player.buildTvPlayerView
 import nl.beeldengeluid.schatkamer.tv.ui.player.playTvMedia
@@ -91,6 +93,8 @@ fun TvPlayerScreen(
 
     // Luister naar spelerstatus en fouten
     DisposableEffect(player) {
+        TvCastManager.currentPlayer = player
+
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 isBuffering = state == Player.STATE_BUFFERING
@@ -110,10 +114,25 @@ fun TvPlayerScreen(
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         onDispose {
+            if (TvCastManager.currentPlayer === player) {
+                TvCastManager.currentPlayer = null
+            }
             player.removeListener(listener)
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             mediaSession.release()
             player.release()
+        }
+    }
+
+    LaunchedEffect(player) {
+        TvCastManager.controlCommands.collect { cmd ->
+            when (cmd) {
+                is TvControlCommand.Play -> player.play()
+                is TvControlCommand.Pause -> player.pause()
+                is TvControlCommand.Seek -> player.seekTo(cmd.positionMs)
+                is TvControlCommand.Stop -> onBack()
+                is TvControlCommand.Volume -> player.volume = cmd.ratio
+            }
         }
     }
 

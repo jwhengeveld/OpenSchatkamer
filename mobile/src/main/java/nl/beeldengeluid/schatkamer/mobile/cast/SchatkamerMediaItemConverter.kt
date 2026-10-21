@@ -25,10 +25,16 @@ class SchatkamerMediaItemConverter : MediaItemConverter {
             metadata.artworkUri?.let { addImage(WebImage(it)) }
         }
 
+        val customData = JSONObject().apply {
+            put("licenseUrl", "https://widevine-dash.ezdrm.com/widevine-php/widevine-foreignkey.php?pX=E24145")
+            put("drmScheme", "widevine")
+        }
+
         val mediaInfo = MediaInfo.Builder(uri.toString())
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-            .setContentType(MimeTypes.APPLICATION_M3U8)
+            .setContentType("application/x-mpegurl")
             .setMetadata(castMetadata)
+            .setCustomData(customData)
             .build()
 
         return MediaQueueItem.Builder(mediaInfo)

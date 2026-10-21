@@ -46,10 +46,12 @@ Schatkamer/
   - `FavoritesRepository`: Lokale opslag van favorieten ("Mijn Lijst").
 
 ### 3. `:mobile` (Telefoon & Tablet)
-- **Google Cast (Chromecast)**:
-  - Volledige integratie via Google Play Services Cast Framework.
-  - Cast Receiver Application ID `377B8439` (officieel geconfigureerd voor Beeld en Geluid).
-  - Naadloze overdracht van afspelen tussen lokaal ExoPlayer en Chromecast via `PlaybackManager`.
+- **Universal Casting (AirPlay, Miracast, Schatkamer TV & Google Cast)**:
+  - **Geïntegreerd Cast & Verbindingsmenu**: Nieuw bottom sheet met één centrale knop in de navigatiebalk en videospeler.
+  - **Apple AirPlay**: Direct streamen naar Apple TV's, Mac's (AirPlay Receiver) en compatibele smart TV's via mDNS `_airplay._tcp` en HTTP transport.
+  - **Miracast / Draadloos Scherm (Smart View)**: Eén-klik koppeling naar de native Android Draadloos Scherm instellingen (`ACTION_CAST_SETTINGS`). Maakt gebruik van hardwarematige Widevine L1/L3 encryptie en Wi-Fi Direct mirroring voor gegarandeerde weergave op alle moderne televisies (Samsung, LG, Sony, Philips).
+  - **De Schatkamer Direct TV**: Automatische herkenning van Schatkamer TV ontvangers in het lokale netwerk via `_schatkamer._tcp`. Stuurt de programmacode en positie rechtstreeks door naar de TV app voor 100% native weergave met officiële licenties en afstandsbediening.
+  - **Google Cast (Chromecast)**: Integratie via Google Play Services Cast Framework (met receiver ID `377B8439` en fallback). Bevat duidelijke diagnostiek voor DRM/CloudFront stream-compatibiliteit.
 - **Moderne UI (Jetpack Compose Material 3)**:
   - **Start**: Hero carousel met trending programma's en dynamische swimlanes.
   - **Zoeken**: Live zoekfunctie met zoekgeschiedenis, categorie-chips en resultatenweergave.
@@ -58,15 +60,19 @@ Schatkamer/
   - **Programmadetail**: Beschrijving, uitzenddatum, omroep, categorieën en directe afspeelknop.
 - **Afspeelfuncties**:
   - `ExoPlayer` met hardwarematige decodering en adaptive bitrate streaming.
-  - MiniPlayer onderaan het scherm tijdens browsen.
+  - MiniPlayer onderaan het scherm tijdens browsen (met swipe-to-dismiss & close knop).
+  - Volledige liggende modus (Landscape) met schermvergrendeling en meedraaien.
   - Picture-in-Picture (PiP) ondersteuning voor Android 8.0+.
-  - `MediaSession` integratie voor bediening via vergrendelscherm, notificaties en bluetooth headsets.
+  - `MediaSessionService` integratie voor bediening via vergrendelscherm, Android 13+ audionotificaties en bluetooth apparaten.
 
 ### 4. `:app` (Android TV)
 - **10-Foot Experience**:
   - Volledige D-Pad afstandsbediening-navigatie met vloeiende focus-animaties (1.06x vergroting + cyan/magenta glow effect).
   - `TvNavigationRail` voor snelle navigatie tussen Start, Zoeken, Ontdekken en Mijn Lijst.
   - Leanback launcher compatibiliteit (`android.intent.category.LEANBACK_LAUNCHER`).
+- **Ingebouwde AirPlay & Schatkamer Receiver**:
+  - Draait een achtergrondserver (poort 7000) die adverteert via mDNS (`_airplay._tcp` en `_schatkamer._tcp`).
+  - Maakt het mogelijk om vanaf elke telefoon met één druk op de knop video's door te sturen naar de TV.
 - **TV Video Player**:
   - Aangepaste `schatkamer_player_view` en `schatkamer_player_controls` voor 10-foot schermen.
   - D-Pad transportbediening: OK (Play/Pause), Links/Rechts (10s achteruit/vooruit spoelen), Terugknop handling.

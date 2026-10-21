@@ -64,6 +64,9 @@ import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerDarkElevated
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerTextMuted
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerTheme
 
+import androidx.compose.runtime.CompositionLocalProvider
+import nl.beeldengeluid.schatkamer.mobile.playback.LocalPlaybackManager
+
 class MainActivity : AppCompatActivity() {
 
     private val app by lazy { application as SchatkamerMobileApp }
@@ -99,16 +102,18 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
 
         setContent {
-            SchatkamerTheme {
-                MainContent(
-                    app = app,
-                    navViewModel = navViewModel,
-                    homeViewModel = homeViewModel,
-                    searchViewModel = searchViewModel,
-                    discoverViewModel = discoverViewModel,
-                    detailViewModel = detailViewModel,
-                    isInPipMode = isInPipMode
-                )
+            CompositionLocalProvider(LocalPlaybackManager provides app.playback) {
+                SchatkamerTheme {
+                    MainContent(
+                        app = app,
+                        navViewModel = navViewModel,
+                        homeViewModel = homeViewModel,
+                        searchViewModel = searchViewModel,
+                        discoverViewModel = discoverViewModel,
+                        detailViewModel = detailViewModel,
+                        isInPipMode = isInPipMode
+                    )
+                }
             }
         }
     }

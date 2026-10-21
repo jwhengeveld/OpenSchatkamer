@@ -25,6 +25,9 @@ import nl.beeldengeluid.schatkamer.core.data.PlayableMedia
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerCatalogRepository
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerItem
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerVideoRepository
+import androidx.compose.runtime.LaunchedEffect
+import nl.beeldengeluid.schatkamer.tv.receiver.TvCastManager
+import nl.beeldengeluid.schatkamer.tv.receiver.TvCastReceiverService
 import nl.beeldengeluid.schatkamer.tv.ui.components.TvNavigationRail
 import nl.beeldengeluid.schatkamer.tv.ui.screens.TvDiscoverScreen
 import nl.beeldengeluid.schatkamer.tv.ui.screens.TvFavoritesScreen
@@ -51,6 +54,9 @@ class MainActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
         }
 
+        // Start AirPlay & Schatkamer TV casting ontvanger service
+        TvCastReceiverService.start(this)
+
         setContent {
             SchatkamerTvTheme {
                 TvMainContent(
@@ -73,6 +79,13 @@ fun TvMainContent(
     var selectedDestination by remember { mutableIntStateOf(0) }
     var selectedProgram by remember { mutableStateOf<SchatkamerItem?>(null) }
     var activePlayerMedia by remember { mutableStateOf<PlayableMedia?>(null) }
+
+    // Luister naar inkomende AirPlay & Schatkamer TV streams
+    LaunchedEffect(Unit) {
+        TvCastManager.incomingMedia.collect { media ->
+            activePlayerMedia = media
+        }
+    }
 
     // D-Pad Terugknop afhandeling volgens Android TV richtlijnen:
     // Speler sluiten -> Details sluiten -> Terug naar Startpagina -> App verlaten

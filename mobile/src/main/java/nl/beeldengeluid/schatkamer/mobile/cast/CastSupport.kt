@@ -5,8 +5,20 @@ import android.util.Log
 import android.view.ContextThemeWrapper
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -18,6 +30,9 @@ import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import nl.beeldengeluid.schatkamer.mobile.BuildConfig
 import nl.beeldengeluid.schatkamer.mobile.R
+import nl.beeldengeluid.schatkamer.mobile.playback.LocalPlaybackManager
+import nl.beeldengeluid.schatkamer.mobile.playback.PlaybackManager
+import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerCyan
 
 /**
  * Hulpfuncties voor Google Cast beschikbaarheid en de Cast-knop.
@@ -78,7 +93,7 @@ object CastAvailability {
  * Vereist dat de hosting Activity een AppCompatActivity / FragmentActivity is.
  */
 @Composable
-fun CastButton(
+fun GoogleCastMediaRouteButton(
     modifier: Modifier = Modifier
 ) {
     AndroidView(
@@ -89,9 +104,55 @@ fun CastButton(
                 runCatching {
                     CastButtonFactory.setUpMediaRouteButton(ctx.applicationContext, this)
                 }.onFailure { err ->
-                    Log.w("CastButton", "Kon MediaRouteButton niet koppelen aan Cast: ${err.message}")
+                    Log.w("GoogleCastMediaRouteButton", "Kon MediaRouteButton niet koppelen aan Cast: ${err.message}")
                 }
             }
         }
     )
+}
+
+/**
+ * Universele Cast-knop die het 'Verbinden & Casten' paneel opent met ondersteuning
+ * voor Apple AirPlay, Miracast / Draadloos Scherm en Google Cast.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UniversalCastButton(
+    modifier: Modifier = Modifier,
+    playbackManager: PlaybackManager = LocalPlaybackManager.current
+) {
+    val state by playbackManager.state.collectAsState()
+    var showSheet by remember { mutableStateOf(false) }
+
+    IconButton(
+        onClick = { showSheet = true },
+        modifier = modifier
+    ) {
+        val tint = if (state.isCasting) SchatkamerCyan else Color.White
+        val icon = if (state.isCasting) Icons.Default.CastConnected else Icons.Default.Cast
+        Icon(
+            imageVector = icon,
+            contentDescription = "Verbinden & Casten (AirPlay, Miracast, Cast)",
+            tint = tint
+        )
+    }
+
+    if (showSheet) {
+        UniversalCastSheet(
+            playbackManager = playbackManager,
+            playbackState = state,
+            onDismissRequest = { showSheet = false }
+        )
+    }
+}
+
+/**
+ * Compatibiliteitsalias: CastButton opent nu het complete 'Verbinden & Casten' paneel.
+ */
+@Composable
+fun CastButton(
+    modifier: Modifier = Modifier,
+    playbackManager: PlaybackManager = LocalPlaybackManager.current
+) {
+    UniversalCastButton(modifier = modifier, playbackManager = playbackManager)
 }

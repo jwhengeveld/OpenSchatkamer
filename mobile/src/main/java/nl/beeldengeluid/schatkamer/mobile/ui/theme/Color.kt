@@ -9,6 +9,7 @@ val SchatkamerBorder = Color(0xFF2E3142)
 
 val SchatkamerCyan = Color(0xFF05C8F0)
 val SchatkamerMagenta = Color(0xFFFF00BC)
+val SchatkamerYellow = Color(0xFFFFE500)
 
 val SchatkamerTextPrimary = Color(0xFFF0F1FA)
 val SchatkamerTextSecondary = Color(0xFFA0A5BC)

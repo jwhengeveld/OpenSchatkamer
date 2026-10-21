@@ -31,11 +31,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import nl.beeldengeluid.schatkamer.core.cast.CastDevice
+import nl.beeldengeluid.schatkamer.core.cast.ProtocolType
 import nl.beeldengeluid.schatkamer.core.data.PlayableMedia
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerVideoRepository
 import nl.beeldengeluid.schatkamer.mobile.MainActivity
 import nl.beeldengeluid.schatkamer.mobile.cast.CastAvailability
 import nl.beeldengeluid.schatkamer.mobile.cast.SchatkamerMediaItemConverter
+import nl.beeldengeluid.schatkamer.mobile.cast.SchatkamerTvSenderClient
+import nl.beeldengeluid.schatkamer.mobile.cast.airplay.AirPlayDiscoveryManager
+import nl.beeldengeluid.schatkamer.mobile.cast.airplay.AirPlaySenderClient
+
+val LocalPlaybackManager = androidx.compose.runtime.staticCompositionLocalOf<PlaybackManager> {
+    error("Geen PlaybackManager beschikbaar in CompositionLocal")
+}
 
 data class PlaybackState(
     val media: PlayableMedia? = null,
@@ -43,6 +52,7 @@ data class PlaybackState(
     val isLoading: Boolean = false,
     val isCasting: Boolean = false,
     val castDeviceName: String? = null,
+    val castProtocol: ProtocolType? = null,
     val currentPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val error: String? = null
@@ -68,6 +78,11 @@ class PlaybackManager(
     val mediaSession: MediaSession?
         get() = _mediaSession
     private var positionPollJob: Job? = null
+
+    val discoveryManager = AirPlayDiscoveryManager(appContext)
+    private var airPlayClient: AirPlaySenderClient? = null
+    private var tvClient: SchatkamerTvSenderClient? = null
+    private var remoteCastJob: Job? = null
 
     companion object {
         const val ACTION_OPEN_PLAYER = "nl.beeldengeluid.schatkamer.ACTION_OPEN_PLAYER"
@@ -187,29 +202,211 @@ class PlaybackManager(
     }
 
     fun pause() {
-        _player.value?.pause()
+        if (airPlayClient != null) {
+            scope.launch { airPlayClient?.pause() }
+            _state.update { it.copy(isPlaying = false) }
+        } else if (tvClient != null) {
+            scope.launch { tvClient?.pause() }
+            _state.update { it.copy(isPlaying = false) }
+        } else {
+            _player.value?.pause()
+        }
     }
 
     fun resume() {
-        _player.value?.play()
+        if (airPlayClient != null) {
+            scope.launch { airPlayClient?.resume() }
+            _state.update { it.copy(isPlaying = true) }
+        } else if (tvClient != null) {
+            scope.launch { tvClient?.resume() }
+            _state.update { it.copy(isPlaying = true) }
+        } else {
+            _player.value?.play()
+        }
     }
 
     fun seekTo(positionMs: Long) {
-        _player.value?.seekTo(positionMs)
+        if (airPlayClient != null) {
+            scope.launch { airPlayClient?.seekTo(positionMs) }
+            _state.update { it.copy(currentPositionMs = positionMs) }
+        } else if (tvClient != null) {
+            scope.launch { tvClient?.seekTo(positionMs) }
+            _state.update { it.copy(currentPositionMs = positionMs) }
+        } else {
+            _player.value?.seekTo(positionMs)
+        }
     }
 
     fun seekBy(offsetMs: Long) {
-        val current = _player.value?.currentPosition ?: 0L
+        val current = _state.value.currentPositionMs
         seekTo((current + offsetMs).coerceAtLeast(0L))
     }
 
     fun stop() {
+        disconnectRemoteCast(resumeLocal = false)
         _player.value?.stop()
         _state.update { it.copy(isPlaying = false, isLoading = false, media = null) }
         positionPollJob?.cancel()
         try {
             appContext.stopService(Intent(appContext, SchatkamerPlaybackService::class.java))
         } catch (_: Exception) {}
+    }
+
+    fun castToDevice(device: CastDevice) {
+        val currentMedia = _state.value.media ?: return
+        val pos = _state.value.currentPositionMs
+
+        disconnectRemoteCast(resumeLocal = false)
+        localPlayer?.pause()
+
+        when (device.protocol) {
+            ProtocolType.AIRPLAY -> {
+                val client = AirPlaySenderClient(device)
+                airPlayClient = client
+                _state.update {
+                    it.copy(
+                        isCasting = true,
+                        castDeviceName = device.name,
+                        castProtocol = ProtocolType.AIRPLAY
+                    )
+                }
+
+                scope.launch {
+                    val success = client.playMedia(currentMedia.streamUrl, currentMedia.title, pos / 1000.0)
+                    if (!success) {
+                        _state.update {
+                            it.copy(
+                                error = client.errorMessage.value ?: "Kon niet verbinden met ${device.name}",
+                                isCasting = false,
+                                castDeviceName = null,
+                                castProtocol = null
+                            )
+                        }
+                        airPlayClient = null
+                    } else {
+                        observeAirPlay(client)
+                    }
+                }
+            }
+            ProtocolType.SCHATKAMER_TV -> {
+                val client = SchatkamerTvSenderClient(device)
+                tvClient = client
+                _state.update {
+                    it.copy(
+                        isCasting = true,
+                        castDeviceName = device.name,
+                        castProtocol = ProtocolType.SCHATKAMER_TV
+                    )
+                }
+
+                scope.launch {
+                    val success = client.playProgram(currentMedia.id, currentMedia.title, pos, currentMedia.streamUrl)
+                    if (!success) {
+                        _state.update {
+                            it.copy(
+                                error = client.errorMessage.value ?: "Kon niet verbinden met ${device.name}",
+                                isCasting = false,
+                                castDeviceName = null,
+                                castProtocol = null
+                            )
+                        }
+                        tvClient = null
+                    } else {
+                        observeTv(client)
+                    }
+                }
+            }
+            else -> {}
+        }
+    }
+
+    fun disconnectRemoteCast(resumeLocal: Boolean = true) {
+        val wasRemote = airPlayClient != null || tvClient != null
+        val pos = _state.value.currentPositionMs
+
+        remoteCastJob?.cancel()
+        remoteCastJob = null
+
+        val ac = airPlayClient
+        val tc = tvClient
+        airPlayClient = null
+        tvClient = null
+
+        scope.launch {
+            ac?.stop()
+            ac?.release()
+            tc?.stop()
+            tc?.release()
+        }
+
+        if (wasRemote) {
+            _state.update {
+                it.copy(
+                    isCasting = false,
+                    castDeviceName = null,
+                    castProtocol = null
+                )
+            }
+            if (resumeLocal) {
+                val ep = ensureLocal()
+                ep.seekTo(pos)
+                ep.play()
+            }
+        } else if (_state.value.isCasting) {
+            stopCasting()
+        }
+    }
+
+    private fun observeAirPlay(client: AirPlaySenderClient) {
+        remoteCastJob?.cancel()
+        remoteCastJob = scope.launch {
+            launch {
+                client.isPlaying.collect { playing ->
+                    _state.update { it.copy(isPlaying = playing) }
+                }
+            }
+            launch {
+                client.positionMs.collect { pos ->
+                    if (pos > 0) _state.update { it.copy(currentPositionMs = pos) }
+                }
+            }
+            launch {
+                client.durationMs.collect { dur ->
+                    if (dur > 0) _state.update { it.copy(durationMs = dur) }
+                }
+            }
+            launch {
+                client.errorMessage.collect { err ->
+                    if (err != null) _state.update { it.copy(error = err) }
+                }
+            }
+        }
+    }
+
+    private fun observeTv(client: SchatkamerTvSenderClient) {
+        remoteCastJob?.cancel()
+        remoteCastJob = scope.launch {
+            launch {
+                client.isPlaying.collect { playing ->
+                    _state.update { it.copy(isPlaying = playing) }
+                }
+            }
+            launch {
+                client.positionMs.collect { pos ->
+                    if (pos > 0) _state.update { it.copy(currentPositionMs = pos) }
+                }
+            }
+            launch {
+                client.durationMs.collect { dur ->
+                    if (dur > 0) _state.update { it.copy(durationMs = dur) }
+                }
+            }
+            launch {
+                client.errorMessage.collect { err ->
+                    if (err != null) _state.update { it.copy(error = err) }
+                }
+            }
+        }
     }
 
     fun retry() {
@@ -417,6 +614,8 @@ class PlaybackManager(
 
     fun release() {
         positionPollJob?.cancel()
+        disconnectRemoteCast(resumeLocal = false)
+        discoveryManager.release()
         try {
             appContext.stopService(Intent(appContext, SchatkamerPlaybackService::class.java))
         } catch (_: Exception) {}
