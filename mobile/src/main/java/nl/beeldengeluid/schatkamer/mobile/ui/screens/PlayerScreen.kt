@@ -2,6 +2,8 @@ package nl.beeldengeluid.schatkamer.mobile.ui.screens
 
 import android.app.Activity
 import android.app.PictureInPictureParams
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.os.Build
 import android.util.Rational
 import androidx.annotation.OptIn
@@ -13,15 +15,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
@@ -43,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,10 +72,20 @@ fun PlayerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val activity = context as? Activity
     val state by playbackManager.state.collectAsState()
     val player by playbackManager.player.collectAsState()
 
     var showControls by remember { mutableStateOf(true) }
+
+    // Automatisch herstellen naar default oriëntatie bij verlaten van de speler
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
 
     // Auto-hide controls na 4 seconden wanneer aan het afspelen
     LaunchedEffect(showControls, state.isPlaying) {
@@ -140,11 +158,13 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.45f))
             ) {
-                // Bovenbalk: Terug, Titel, PiP, Cast
+                // Bovenbalk: Terug, Titel, Oriëntatie, PiP, Cast
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 12.dp)
+                        .statusBarsPadding()
+                        .displayCutoutPadding()
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                         .align(Alignment.TopStart),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -170,11 +190,27 @@ fun PlayerScreen(
                         }
                     }
 
+                    // Schakelen naar liggend/staand (Oriëntatie toggle)
+                    IconButton(
+                        onClick = {
+                            activity?.requestedOrientation = if (isLandscape) {
+                                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                            } else {
+                                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isLandscape) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            contentDescription = if (isLandscape) "Staand (portret)" else "Liggend (volledig scherm)",
+                            tint = Color.White
+                        )
+                    }
+
                     // Picture in Picture knop
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         IconButton(
                             onClick = {
-                                val activity = context as? Activity
                                 if (activity != null) {
                                     val params = PictureInPictureParams.Builder()
                                         .setAspectRatio(Rational(16, 9))
@@ -225,11 +261,13 @@ fun PlayerScreen(
                     }
                 }
 
-                // Onderbalk: Tijdbalk en tijden
+                // Onderbalk: Tijdbalk, tijden en schermoriëntatie
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 16.dp)
+                        .navigationBarsPadding()
+                        .displayCutoutPadding()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                         .align(Alignment.BottomCenter)
                 ) {
                     Slider(
@@ -246,10 +284,31 @@ fun PlayerScreen(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(formatDuration(state.currentPositionMs), color = Color.White, fontSize = 12.sp)
-                        Text(formatDuration(state.durationMs), color = Color.LightGray, fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(formatDuration(state.durationMs), color = Color.LightGray, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            IconButton(
+                                onClick = {
+                                    activity?.requestedOrientation = if (isLandscape) {
+                                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    } else {
+                                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                    }
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isLandscape) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                    contentDescription = if (isLandscape) "Staand (portret)" else "Liggend (volledig scherm)",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

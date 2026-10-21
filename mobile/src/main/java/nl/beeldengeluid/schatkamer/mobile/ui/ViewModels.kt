@@ -185,3 +185,28 @@ class ProgramDetailViewModel(
         }
     }
 }
+
+class MainNavigationViewModel : ViewModel() {
+    var splashFinished = false
+    val selectedTab = MutableStateFlow(0)
+    val selectedProgram = MutableStateFlow<SchatkamerItem?>(null)
+    val showPlayerScreen = MutableStateFlow(false)
+
+    fun openPlayer() {
+        showPlayerScreen.value = true
+    }
+
+    fun closePlayer() {
+        showPlayerScreen.value = false
+    }
+
+    fun selectTab(tab: Int) {
+        selectedTab.value = tab
+        selectedProgram.value = null
+    }
+
+    fun selectProgram(item: SchatkamerItem?) {
+        selectedProgram.value = item
+    }
+}
+

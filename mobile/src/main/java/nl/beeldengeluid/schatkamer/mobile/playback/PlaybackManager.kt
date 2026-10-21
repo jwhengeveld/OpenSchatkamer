@@ -64,8 +64,14 @@ class PlaybackManager(
 
     private var localPlayer: ExoPlayer? = null
     private var castPlayer: CastPlayer? = null
-    private var mediaSession: MediaSession? = null
+    private var _mediaSession: MediaSession? = null
+    val mediaSession: MediaSession?
+        get() = _mediaSession
     private var positionPollJob: Job? = null
+
+    companion object {
+        const val ACTION_OPEN_PLAYER = "nl.beeldengeluid.schatkamer.ACTION_OPEN_PLAYER"
+    }
 
     init {
         CastAvailability.init(appContext) { castContext ->
@@ -163,6 +169,20 @@ class PlaybackManager(
         }
         active.playWhenReady = true
         startPositionPolling()
+        startPlaybackService()
+    }
+
+    private fun startPlaybackService() {
+        try {
+            val serviceIntent = Intent(appContext, SchatkamerPlaybackService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                appContext.startForegroundService(serviceIntent)
+            } else {
+                appContext.startService(serviceIntent)
+            }
+        } catch (_: Exception) {
+            // Background start restrictions fallback
+        }
     }
 
     fun pause() {
@@ -186,6 +206,9 @@ class PlaybackManager(
         _player.value?.stop()
         _state.update { it.copy(isPlaying = false, isLoading = false) }
         positionPollJob?.cancel()
+        try {
+            appContext.stopService(Intent(appContext, SchatkamerPlaybackService::class.java))
+        } catch (_: Exception) {}
     }
 
     private fun activePlayer(): Player {
@@ -221,14 +244,18 @@ class PlaybackManager(
         localPlayer = ep
 
         // MediaSession instellen
-        val intent = Intent(appContext, MainActivity::class.java)
+        val intent = Intent(appContext, MainActivity::class.java).apply {
+            action = ACTION_OPEN_PLAYER
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val pendingIntent = PendingIntent.getActivity(
             appContext,
             0,
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        mediaSession = MediaSession.Builder(appContext, ep)
+        _mediaSession = MediaSession.Builder(appContext, ep)
+            .setId("schatkamer-mobile")
             .setSessionActivity(pendingIntent)
             .build()
 
@@ -288,6 +315,8 @@ class PlaybackManager(
                 MediaMetadata.Builder()
                     .setTitle(media.title)
                     .setSubtitle(media.subtitle)
+                    .setArtist("De Schatkamer · Beeld & Geluid")
+                    .setDisplayTitle(media.title)
                     .setArtworkUri(if (media.posterUrl.isNotBlank()) Uri.parse(media.posterUrl) else null)
                     .build()
             )
@@ -371,9 +400,12 @@ class PlaybackManager(
 
     fun release() {
         positionPollJob?.cancel()
-        mediaSession?.release()
+        try {
+            appContext.stopService(Intent(appContext, SchatkamerPlaybackService::class.java))
+        } catch (_: Exception) {}
+        _mediaSession?.release()
         localPlayer?.release()
         localPlayer = null
-        mediaSession = null
+        _mediaSession = null
     }
 }
