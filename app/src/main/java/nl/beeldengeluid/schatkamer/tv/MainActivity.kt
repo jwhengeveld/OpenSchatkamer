@@ -74,12 +74,15 @@ fun TvMainContent(
     var selectedProgram by remember { mutableStateOf<SchatkamerItem?>(null) }
     var activePlayerMedia by remember { mutableStateOf<PlayableMedia?>(null) }
 
-    // D-Pad Terugknop afhandeling
-    BackHandler(enabled = activePlayerMedia != null || selectedProgram != null) {
+    // D-Pad Terugknop afhandeling volgens Android TV richtlijnen:
+    // Speler sluiten -> Details sluiten -> Terug naar Startpagina -> App verlaten
+    BackHandler(enabled = activePlayerMedia != null || selectedProgram != null || selectedDestination != 0) {
         if (activePlayerMedia != null) {
             activePlayerMedia = null
         } else if (selectedProgram != null) {
             selectedProgram = null
+        } else if (selectedDestination != 0) {
+            selectedDestination = 0
         }
     }
 

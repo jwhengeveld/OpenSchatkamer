@@ -205,11 +205,18 @@ class PlaybackManager(
 
     fun stop() {
         _player.value?.stop()
-        _state.update { it.copy(isPlaying = false, isLoading = false) }
+        _state.update { it.copy(isPlaying = false, isLoading = false, media = null) }
         positionPollJob?.cancel()
         try {
             appContext.stopService(Intent(appContext, SchatkamerPlaybackService::class.java))
         } catch (_: Exception) {}
+    }
+
+    fun retry() {
+        val currentMedia = _state.value.media ?: return
+        val pos = _state.value.currentPositionMs
+        val resumeMedia = currentMedia.copy(resumePositionMs = pos)
+        play(resumeMedia)
     }
 
     fun stopCasting() {

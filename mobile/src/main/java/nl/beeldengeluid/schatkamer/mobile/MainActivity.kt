@@ -1,15 +1,18 @@
 package nl.beeldengeluid.schatkamer.mobile
 
 import android.Manifest
+import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import android.util.Rational
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -35,15 +38,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import nl.beeldengeluid.schatkamer.brand.SchatkamerSplash
-import nl.beeldengeluid.schatkamer.core.data.PlayableMedia
-import nl.beeldengeluid.schatkamer.core.data.SchatkamerItem
 import nl.beeldengeluid.schatkamer.mobile.cast.CastAvailability
 import nl.beeldengeluid.schatkamer.mobile.playback.PlaybackManager
 import nl.beeldengeluid.schatkamer.mobile.ui.DiscoverViewModel
@@ -82,6 +82,8 @@ class MainActivity : AppCompatActivity() {
         viewModelFactory { ProgramDetailViewModel(app.video, app.favorites) }
     }
 
+    private var isInPipMode by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -104,8 +106,31 @@ class MainActivity : AppCompatActivity() {
                     homeViewModel = homeViewModel,
                     searchViewModel = searchViewModel,
                     discoverViewModel = discoverViewModel,
-                    detailViewModel = detailViewModel
+                    detailViewModel = detailViewModel,
+                    isInPipMode = isInPipMode
                 )
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPipMode = isInPictureInPictureMode
+        if (isInPictureInPictureMode) {
+            navViewModel.openPlayer()
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (navViewModel.showPlayerScreen.value && app.playback.state.value.isPlaying) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                runCatching {
+                    val params = PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(16, 9))
+                        .build()
+                    enterPictureInPictureMode(params)
+                }
             }
         }
     }
@@ -137,7 +162,8 @@ fun MainContent(
     homeViewModel: HomeViewModel,
     searchViewModel: SearchViewModel,
     discoverViewModel: DiscoverViewModel,
-    detailViewModel: ProgramDetailViewModel
+    detailViewModel: ProgramDetailViewModel,
+    isInPipMode: Boolean = false
 ) {
     val selectedTab by navViewModel.selectedTab.collectAsState()
     val selectedProgram by navViewModel.selectedProgram.collectAsState()
@@ -165,51 +191,54 @@ fun MainContent(
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             bottomBar = {
-                Column {
-                    // MiniPlayer zolang video/audio geladen is en niet op volledig spelerscherm
-                    if (playbackState.media != null && !showPlayerScreen) {
-                        MiniPlayer(
-                            playbackState = playbackState,
-                            onPlayPause = {
-                                if (playbackState.isPlaying) app.playback.pause() else app.playback.resume()
-                            },
-                            onClick = { navViewModel.openPlayer() }
-                        )
-                    }
+                if (!isInPipMode) {
+                    Column {
+                        // MiniPlayer zolang video/audio geladen is en niet op volledig spelerscherm
+                        if (playbackState.media != null && !showPlayerScreen) {
+                            MiniPlayer(
+                                playbackState = playbackState,
+                                onPlayPause = {
+                                    if (playbackState.isPlaying) app.playback.pause() else app.playback.resume()
+                                },
+                                onClick = { navViewModel.openPlayer() },
+                                onClose = { app.playback.stop() }
+                            )
+                        }
 
-                    // Onderste navigatiebalk
-                    NavigationBar(
-                        containerColor = SchatkamerDarkElevated,
-                        contentColor = SchatkamerCyan
-                    ) {
-                        NavigationBarItem(
-                            selected = selectedTab == 0 && selectedProgram == null,
-                            onClick = { navViewModel.selectTab(0) },
-                            icon = { Icon(Icons.Default.Home, contentDescription = "Start") },
-                            label = { Text("Start") },
-                            colors = navigationBarColors()
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == 1 && selectedProgram == null,
-                            onClick = { navViewModel.selectTab(1) },
-                            icon = { Icon(Icons.Default.Search, contentDescription = "Zoeken") },
-                            label = { Text("Zoeken") },
-                            colors = navigationBarColors()
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == 2 && selectedProgram == null,
-                            onClick = { navViewModel.selectTab(2) },
-                            icon = { Icon(Icons.Default.Explore, contentDescription = "Ontdek") },
-                            label = { Text("Ontdek") },
-                            colors = navigationBarColors()
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == 3 && selectedProgram == null,
-                            onClick = { navViewModel.selectTab(3) },
-                            icon = { Icon(Icons.Default.Bookmark, contentDescription = "Mijn Lijst") },
-                            label = { Text("Mijn Lijst") },
-                            colors = navigationBarColors()
-                        )
+                        // Onderste navigatiebalk
+                        NavigationBar(
+                            containerColor = SchatkamerDarkElevated,
+                            contentColor = SchatkamerCyan
+                        ) {
+                            NavigationBarItem(
+                                selected = selectedTab == 0 && selectedProgram == null,
+                                onClick = { navViewModel.selectTab(0) },
+                                icon = { Icon(Icons.Default.Home, contentDescription = "Start") },
+                                label = { Text("Start") },
+                                colors = navigationBarColors()
+                            )
+                            NavigationBarItem(
+                                selected = selectedTab == 1 && selectedProgram == null,
+                                onClick = { navViewModel.selectTab(1) },
+                                icon = { Icon(Icons.Default.Search, contentDescription = "Zoeken") },
+                                label = { Text("Zoeken") },
+                                colors = navigationBarColors()
+                            )
+                            NavigationBarItem(
+                                selected = selectedTab == 2 && selectedProgram == null,
+                                onClick = { navViewModel.selectTab(2) },
+                                icon = { Icon(Icons.Default.Explore, contentDescription = "Ontdek") },
+                                label = { Text("Ontdek") },
+                                colors = navigationBarColors()
+                            )
+                            NavigationBarItem(
+                                selected = selectedTab == 3 && selectedProgram == null,
+                                onClick = { navViewModel.selectTab(3) },
+                                icon = { Icon(Icons.Default.Bookmark, contentDescription = "Mijn Lijst") },
+                                label = { Text("Mijn Lijst") },
+                                colors = navigationBarColors()
+                            )
+                        }
                     }
                 }
             },
@@ -266,6 +295,7 @@ fun MainContent(
             PlayerScreen(
                 playbackManager = app.playback,
                 onBack = { navViewModel.closePlayer() },
+                isInPipMode = isInPipMode,
                 modifier = Modifier.fillMaxSize()
             )
         }

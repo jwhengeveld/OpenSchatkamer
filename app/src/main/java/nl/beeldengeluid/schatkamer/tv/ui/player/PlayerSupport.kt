@@ -45,6 +45,7 @@ fun buildTvPlayer(context: Context): ExoPlayer {
                 .build(),
             true
         )
+        .setHandleAudioBecomingNoisy(true)
         .setWakeMode(C.WAKE_MODE_NETWORK)
         .build()
         .apply { playWhenReady = true }

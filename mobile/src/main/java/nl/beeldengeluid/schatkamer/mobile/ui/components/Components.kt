@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -246,6 +247,7 @@ fun MiniPlayer(
     playbackState: PlaybackState,
     onPlayPause: () -> Unit,
     onClick: () -> Unit,
+    onClose: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val media = playbackState.media ?: return
@@ -334,6 +336,19 @@ fun MiniPlayer(
                             imageVector = if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (playbackState.isPlaying) "Pauze" else "Afspelen",
                             tint = SchatkamerTextPrimary
+                        )
+                    }
+                }
+
+                if (onClose != null) {
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Sluiten",
+                            tint = SchatkamerTextMuted
                         )
                     }
                 }
