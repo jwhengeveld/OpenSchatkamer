@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Schatkamer Downloader",
+  "version": "1.0.0",
+  "description": "Download een video uit De Schatkamer van Beeld en Geluid als MP4-back-up voor offline gebruik.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "downloads",
+    "storage",
+    "cookies",
+    "webRequest",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://schatkamer.beeldengeluid.nl/*",
+    "https://*.beeldengeluid.nl/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://schatkamer.beeldengeluid.nl/*"],
+      "js": ["content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Schatkamer Downloader"
+  }
+}

@@ -1,0 +1,82 @@
+#sk-dl-overlay {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+#sk-dl-overlay[style*="display: none"] { display: none !important; }
+
+.sk-dl-card {
+  position: relative;
+  width: 320px;
+  background: #111218;
+  color: #fff;
+  border: 1px solid #2a2c38;
+  border-radius: 12px;
+  padding: 14px 16px 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+.sk-dl-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 6px;
+  padding-right: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sk-dl-status {
+  font-size: 11.5px;
+  color: #9aa0b4;
+  line-height: 1.45;
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+.sk-dl-bar {
+  height: 3px;
+  background: #23252f;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.sk-dl-bar-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #ff00bc, #05c8f0);
+  transition: width 0.25s ease;
+}
+.sk-dl-actions { display: flex; gap: 8px; }
+.sk-dl-btn {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: #05c8f0;
+  color: #06121a;
+  cursor: pointer;
+}
+.sk-dl-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.sk-dl-btn:disabled { background: #2a2c38; color: #6b7085; cursor: default; }
+.sk-dl-btn.ghost {
+  flex: 0 0 auto;
+  background: transparent;
+  border-color: #2f3240;
+  color: #c8ccda;
+}
+.sk-dl-x {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #6b7085;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+.sk-dl-x:hover { color: #fff; }

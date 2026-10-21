@@ -18,7 +18,9 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
@@ -62,9 +64,15 @@ fun buildTvMediaItem(media: PlayableMedia): MediaItem {
         )
 
     if (media.widevineLicenseUrl.isNotBlank()) {
+        val drmHeaders = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+            "Referer" to "https://schatkamer.beeldengeluid.nl/",
+            "Origin" to "https://schatkamer.beeldengeluid.nl"
+        )
         builder.setDrmConfiguration(
             MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
                 .setLicenseUri(media.widevineLicenseUrl)
+                .setLicenseRequestHeaders(drmHeaders)
                 .build()
         )
     }
@@ -80,6 +88,36 @@ fun buildTvMediaItem(media: PlayableMedia): MediaItem {
     }
 
     return builder.build()
+}
+
+@OptIn(UnstableApi::class)
+fun playTvMedia(player: ExoPlayer, media: PlayableMedia) {
+    val mediaItem = buildTvMediaItem(media)
+    val headers = mutableMapOf(
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+        "Referer" to "https://schatkamer.beeldengeluid.nl/",
+        "Origin" to "https://schatkamer.beeldengeluid.nl"
+    )
+    if (media.cookieHeader.isNotBlank()) {
+        headers["Cookie"] = media.cookieHeader
+    }
+    val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+        .setUserAgent(headers["User-Agent"]!!)
+        .setAllowCrossProtocolRedirects(true)
+        .setDefaultRequestProperties(headers)
+
+    val mediaSource = HlsMediaSource.Factory(httpDataSourceFactory)
+        .setAllowChunklessPreparation(true)
+        .createMediaSource(mediaItem)
+
+    player.stop()
+    player.clearMediaItems()
+    player.setMediaSource(mediaSource)
+    player.prepare()
+    if (media.resumePositionMs > 0) {
+        player.seekTo(media.resumePositionMs)
+    }
+    player.play()
 }
 
 @OptIn(UnstableApi::class)

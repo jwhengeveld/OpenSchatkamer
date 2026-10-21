@@ -53,6 +53,7 @@ class SchatkamerParserTest {
         assertEquals("Op bezoek in kunstenaarsdorp Bergen.", detail.title)
         assertNotNull(detail.streamInfo)
         assertTrue(detail.streamInfo!!.streamUrl.contains("master.m3u8"))
-        assertTrue(detail.streamInfo!!.streamUrl.contains("CloudFront-Policy="))
+        assertTrue(detail.streamInfo!!.streamUrl.contains("Policy="))
+        assertTrue(detail.streamInfo!!.cookieHeader.contains("CloudFront-Policy="))
     }
 }

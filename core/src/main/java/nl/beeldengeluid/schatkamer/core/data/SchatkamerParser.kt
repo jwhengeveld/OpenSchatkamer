@@ -327,8 +327,7 @@ object SchatkamerParser {
      * Parset de stream metadata inclusief CloudFront signed URL / cookies en Widevine DRM.
      */
     fun parseStreamInfo(text: String): SchatkamerStreamInfo? {
-        // Zoek naar streams array in programStream
-        var streamUrl = ""
+        // 1. Zoek programStream JSON metadata
         var posterUrl = ""
         var subtitlesUrl: String? = null
         var storyboardUrl: String? = null
@@ -336,6 +335,7 @@ object SchatkamerParser {
         var startSeconds = 0.0
         var endSeconds = 0.0
         var drmState = "LIVE"
+        var refUrl = ""
 
         val streamIdx = text.indexOf("\"programStream\":{")
         if (streamIdx != -1) {
@@ -347,7 +347,7 @@ object SchatkamerParser {
                     val streamsArr = obj.optJSONArray("streams")
                     if (streamsArr != null && streamsArr.length() > 0) {
                         val s = streamsArr.getJSONObject(0)
-                        val refUrl = s.optString("url", "")
+                        refUrl = s.optString("url", "")
                         posterUrl = s.optString("poster", posterUrl)
                         subtitlesUrl = s.optString("subtitles").takeIf { it.isNotBlank() && it != "null" }
                         storyboardUrl = s.optString("storyboard").takeIf { it.isNotBlank() && it != "null" }
@@ -355,31 +355,18 @@ object SchatkamerParser {
                         startSeconds = s.optDouble("start", 0.0)
                         endSeconds = s.optDouble("end", 0.0)
                         drmState = s.optString("drmState", "LIVE")
-
-                        if (refUrl.startsWith("$")) {
-                            // Referentie naar eerdere regel in RSC stream (bijv. "$26")
-                            val lineKey = refUrl.substring(1) + ":"
-                            streamUrl = resolveRscReference(text, lineKey)
-                        } else if (refUrl.startsWith("http")) {
-                            streamUrl = refUrl
-                        }
                     }
                 }
             }
         }
 
-        // Fallback: zoek direct naar master.m3u8 met query parameters in text
-        if (streamUrl.isBlank()) {
-            val matcher = MASTER_M3U8_URL.matcher(text)
-            if (matcher.find()) {
-                streamUrl = matcher.group(0)?.trim()?.substringBefore("\"")?.substringBefore("\n").orEmpty()
-            }
-        }
-
-        if (streamUrl.isBlank()) return null
+        // 2. Extraheer de volledige master.m3u8 stream tokens en CloudFront cookies
+        val tokens = extractStreamTokens(text)
+            ?: (if (refUrl.startsWith("http")) extractStreamTokens(refUrl) else null)
+            ?: return null
 
         return SchatkamerStreamInfo(
-            streamUrl = streamUrl,
+            streamUrl = tokens.streamUrl,
             posterUrl = posterUrl,
             subtitlesUrl = subtitlesUrl,
             storyboardUrl = storyboardUrl,
@@ -387,37 +374,47 @@ object SchatkamerParser {
             startSeconds = startSeconds,
             endSeconds = endSeconds,
             drmState = drmState,
-            widevineLicenseUrl = WIDEVINE_LICENSE_URL
+            widevineLicenseUrl = WIDEVINE_LICENSE_URL,
+            cookieHeader = tokens.cookieHeader
         )
     }
 
-    private fun resolveRscReference(text: String, lineKey: String): String {
-        val lines = text.split("\n")
-        for (l in lines) {
-            if (l.startsWith(lineKey) || l.contains(lineKey)) {
-                val httpIdx = l.indexOf("https://sk-video.cdn.beeldengeluid.nl/")
-                if (httpIdx != -1) {
-                    val clean = l.substring(httpIdx)
-                    // Kap af bij JSON syntax of newline
-                    val endIdx = clean.indexOfAny(charArrayOf('"', '\n', '\r', '}', ']'))
-                    val candidate = if (endIdx != -1) clean.substring(0, endIdx) else clean
-                    return cleanStreamUrl(candidate)
-                }
-            }
-        }
-        return ""
-    }
+    data class StreamTokens(
+        val streamUrl: String,
+        val cookieHeader: String
+    )
 
-    fun cleanStreamUrl(raw: String): String {
-        var url = raw.trim()
-        if (url.contains("Key-Pair-Id=")) {
-            val keyIdx = url.indexOf("Key-Pair-Id=")
-            val matcher = Pattern.compile("Key-Pair-Id=[A-Za-z0-9]+").matcher(url.substring(keyIdx))
-            if (matcher.find()) {
-                url = url.substring(0, keyIdx + matcher.end())
-            }
+    fun extractStreamTokens(text: String): StreamTokens? {
+        val masterIdx = text.indexOf("master.m3u8")
+        if (masterIdx == -1) return null
+
+        val httpIdx = text.lastIndexOf("https://sk-video.cdn.beeldengeluid.nl/", masterIdx)
+        if (httpIdx == -1) return null
+
+        val sub = text.substring(httpIdx)
+        val endIdx = sub.indexOfAny(charArrayOf('"', '\'', '\n', '\r', '}', ']', '<', '>', ' '))
+        val urlSection = if (endIdx != -1) sub.substring(0, endIdx) else sub
+
+        val baseEnd = urlSection.indexOf("master.m3u8") + "master.m3u8".length
+        val baseUrl = urlSection.substring(0, baseEnd)
+
+        val scope = if (urlSection.length > 300) urlSection else text
+
+        val polMatch = Pattern.compile("(?:CloudFront-Policy|Policy)=([^\\\\&\"'\\s;,]+)").matcher(scope)
+        val sigMatch = Pattern.compile("(?:CloudFront-Signature|Signature)=([^\\\\&\"'\\s;,]+)").matcher(scope)
+        val keyMatch = Pattern.compile("(?:CloudFront-Key-Pair-Id|Key-Pair-Id)=([^\\\\&\"'\\s;,]+)").matcher(scope)
+
+        val policy = if (polMatch.find()) polMatch.group(1).orEmpty() else ""
+        val signature = if (sigMatch.find()) sigMatch.group(1).orEmpty() else ""
+        val keyPairId = if (keyMatch.find()) keyMatch.group(1).orEmpty() else ""
+
+        return if (policy.isNotBlank() && signature.isNotBlank() && keyPairId.isNotBlank()) {
+            val cleanUrl = "$baseUrl?Policy=$policy&Signature=$signature&Key-Pair-Id=$keyPairId"
+            val cookieHeader = "CloudFront-Policy=$policy; CloudFront-Signature=$signature; CloudFront-Key-Pair-Id=$keyPairId"
+            StreamTokens(cleanUrl, cookieHeader)
+        } else {
+            StreamTokens(baseUrl, "")
         }
-        return url
     }
 
     private fun parseFallbackRows(text: String): List<SchatkamerRow> {

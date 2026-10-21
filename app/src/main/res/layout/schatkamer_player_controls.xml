@@ -136,33 +136,38 @@
             android:gravity="center">
 
             <ImageButton
-                android:id="@id/exo_rew_with_amount"
+                android:id="@id/exo_rew"
                 android:layout_width="@dimen/tv_control_button"
                 android:layout_height="@dimen/tv_control_button"
-                android:layout_marginEnd="24dp"
+                android:layout_marginEnd="28dp"
                 android:background="@drawable/bg_control_button"
                 android:padding="@dimen/tv_control_padding"
-                android:scaleType="centerInside"
-                android:focusable="true"/>
+                android:scaleType="fitCenter"
+                android:src="@drawable/exo_icon_rewind"
+                android:focusable="true"
+                android:contentDescription="@string/exo_controls_rewind_description"/>
 
             <ImageButton
                 android:id="@id/exo_play_pause"
                 android:layout_width="@dimen/tv_control_button_large"
                 android:layout_height="@dimen/tv_control_button_large"
                 android:background="@drawable/bg_control_button"
-                android:padding="16dp"
-                android:scaleType="centerInside"
-                android:focusable="true"/>
+                android:padding="18dp"
+                android:scaleType="fitCenter"
+                android:focusable="true"
+                android:contentDescription="@string/exo_controls_play_description"/>
 
             <ImageButton
-                android:id="@id/exo_ffwd_with_amount"
+                android:id="@id/exo_ffwd"
                 android:layout_width="@dimen/tv_control_button"
                 android:layout_height="@dimen/tv_control_button"
-                android:layout_marginStart="24dp"
+                android:layout_marginStart="28dp"
                 android:background="@drawable/bg_control_button"
                 android:padding="@dimen/tv_control_padding"
-                android:scaleType="centerInside"
-                android:focusable="true"/>
+                android:scaleType="fitCenter"
+                android:src="@drawable/exo_icon_fastforward"
+                android:focusable="true"
+                android:contentDescription="@string/exo_controls_fastforward_description"/>
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

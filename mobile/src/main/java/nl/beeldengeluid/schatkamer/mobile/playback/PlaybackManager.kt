@@ -15,7 +15,9 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import com.google.android.gms.cast.framework.CastContext
@@ -131,7 +133,30 @@ class PlaybackManager(
 
         active.stop()
         active.clearMediaItems()
-        active.setMediaItem(mediaItem)
+
+        if (active is ExoPlayer) {
+            val headers = mutableMapOf(
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36",
+                "Referer" to "https://schatkamer.beeldengeluid.nl/",
+                "Origin" to "https://schatkamer.beeldengeluid.nl"
+            )
+            if (media.cookieHeader.isNotBlank()) {
+                headers["Cookie"] = media.cookieHeader
+            }
+            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                .setUserAgent(headers["User-Agent"]!!)
+                .setAllowCrossProtocolRedirects(true)
+                .setDefaultRequestProperties(headers)
+
+            val mediaSource = HlsMediaSource.Factory(httpDataSourceFactory)
+                .setAllowChunklessPreparation(true)
+                .createMediaSource(mediaItem)
+
+            active.setMediaSource(mediaSource)
+        } else {
+            active.setMediaItem(mediaItem)
+        }
+
         active.prepare()
         if (media.resumePositionMs > 0) {
             active.seekTo(media.resumePositionMs)
@@ -232,7 +257,25 @@ class PlaybackManager(
         val local = ensureLocal()
         _player.value = local
         val mediaItem = buildMediaItem(currentMedia)
-        local.setMediaItem(mediaItem, pos)
+
+        val headers = mutableMapOf(
+            "User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+            "Referer" to "https://schatkamer.beeldengeluid.nl/",
+            "Origin" to "https://schatkamer.beeldengeluid.nl"
+        )
+        if (currentMedia.cookieHeader.isNotBlank()) {
+            headers["Cookie"] = currentMedia.cookieHeader
+        }
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(headers["User-Agent"]!!)
+            .setAllowCrossProtocolRedirects(true)
+            .setDefaultRequestProperties(headers)
+
+        val mediaSource = HlsMediaSource.Factory(httpDataSourceFactory)
+            .setAllowChunklessPreparation(true)
+            .createMediaSource(mediaItem)
+
+        local.setMediaSource(mediaSource, pos)
         local.prepare()
         local.pause() // Gepauzeerd klaarzetten op mobiel
     }
@@ -251,9 +294,15 @@ class PlaybackManager(
 
         // Widevine DRM configuratie
         if (media.widevineLicenseUrl.isNotBlank()) {
+            val drmHeaders = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+                "Referer" to "https://schatkamer.beeldengeluid.nl/",
+                "Origin" to "https://schatkamer.beeldengeluid.nl"
+            )
             builder.setDrmConfiguration(
                 MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
                     .setLicenseUri(media.widevineLicenseUrl)
+                    .setLicenseRequestHeaders(drmHeaders)
                     .build()
             )
         }

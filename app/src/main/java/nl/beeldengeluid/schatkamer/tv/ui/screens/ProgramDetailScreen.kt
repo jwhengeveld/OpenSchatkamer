@@ -201,7 +201,8 @@ fun TvProgramDetailScreen(
                                                 seriesId = d.seriesId.orEmpty(),
                                                 mediaType = d.mediaType,
                                                 widevineLicenseUrl = stream.widevineLicenseUrl,
-                                                subtitlesUrl = stream.subtitlesUrl
+                                                subtitlesUrl = stream.subtitlesUrl,
+                                                cookieHeader = stream.cookieHeader
                                             )
                                         )
                                     }

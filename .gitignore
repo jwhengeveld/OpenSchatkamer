@@ -15,3 +15,5 @@
 keystore.properties
 build-play/
 release/
+dist/
+*.zip

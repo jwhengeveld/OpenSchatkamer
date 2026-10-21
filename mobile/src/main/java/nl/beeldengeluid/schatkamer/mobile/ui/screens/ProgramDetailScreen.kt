@@ -241,7 +241,8 @@ fun ProgramDetailScreen(
                                                     seriesId = detail.seriesId.orEmpty(),
                                                     mediaType = detail.mediaType,
                                                     widevineLicenseUrl = stream.widevineLicenseUrl,
-                                                    subtitlesUrl = stream.subtitlesUrl
+                                                    subtitlesUrl = stream.subtitlesUrl,
+                                                    cookieHeader = stream.cookieHeader
                                                 )
                                             )
                                         },

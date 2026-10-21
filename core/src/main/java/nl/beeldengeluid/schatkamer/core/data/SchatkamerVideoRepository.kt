@@ -29,7 +29,29 @@ class SchatkamerVideoRepository(context: Context) {
             }
 
             val html = httpClient.getHtml(url)
-            val detail = SchatkamerParser.parseProgramDetail(html, programId)
+            var detail = SchatkamerParser.parseProgramDetail(html, programId)
+
+            // Als de pagina (bijv. een serieoverzicht) zelf geen directe stream bevat maar wel afleveringen:
+            if (detail.streamInfo == null && detail.episodes.isNotEmpty()) {
+                val firstEp = detail.episodes.first()
+                val epUrl = if (firstEp.url.isNotBlank()) {
+                    if (firstEp.url.startsWith("http")) firstEp.url else "${SchatkamerHttpClient.BASE_URL}${firstEp.url}"
+                } else null
+
+                if (epUrl != null) {
+                    runCatching {
+                        val epHtml = httpClient.getHtml(epUrl)
+                        val epDetail = SchatkamerParser.parseProgramDetail(epHtml, firstEp.id)
+                        if (epDetail.streamInfo != null) {
+                            detail = detail.copy(
+                                streamInfo = epDetail.streamInfo,
+                                isPlayable = true
+                            )
+                        }
+                    }
+                }
+            }
+
             detailCache[programId] = detail
             detail
         }
@@ -51,7 +73,8 @@ class SchatkamerVideoRepository(context: Context) {
             mediaType = detail.mediaType,
             widevineLicenseUrl = stream.widevineLicenseUrl,
             subtitlesUrl = stream.subtitlesUrl,
-            resumePositionMs = resumePositionMs
+            resumePositionMs = resumePositionMs,
+            cookieHeader = stream.cookieHeader
         )
     }
 

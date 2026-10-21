@@ -35,7 +35,8 @@ data class SchatkamerStreamInfo(
     val startSeconds: Double = 0.0,
     val endSeconds: Double = 0.0,
     val drmState: String = "LIVE",
-    val widevineLicenseUrl: String = "https://widevine-dash.ezdrm.com/widevine-php/widevine-foreignkey.php?pX=E24145"
+    val widevineLicenseUrl: String = "https://widevine-dash.ezdrm.com/widevine-php/widevine-foreignkey.php?pX=E24145",
+    val cookieHeader: String = ""
 )
 
 data class SchatkamerProgramDetail(
@@ -72,7 +73,8 @@ data class PlayableMedia(
     val mediaType: String = "video",
     val widevineLicenseUrl: String = "https://widevine-dash.ezdrm.com/widevine-php/widevine-foreignkey.php?pX=E24145",
     val subtitlesUrl: String? = null,
-    val resumePositionMs: Long = 0L
+    val resumePositionMs: Long = 0L,
+    val cookieHeader: String = ""
 )
 
 data class BroadcasterItem(

@@ -23,9 +23,9 @@ import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
 import nl.beeldengeluid.schatkamer.core.data.PlayableMedia
 import nl.beeldengeluid.schatkamer.tv.R
-import nl.beeldengeluid.schatkamer.tv.ui.player.buildTvMediaItem
 import nl.beeldengeluid.schatkamer.tv.ui.player.buildTvPlayer
 import nl.beeldengeluid.schatkamer.tv.ui.player.buildTvPlayerView
+import nl.beeldengeluid.schatkamer.tv.ui.player.playTvMedia
 import nl.beeldengeluid.schatkamer.tv.ui.player.setPlayerLabels
 
 @OptIn(UnstableApi::class)
@@ -53,13 +53,7 @@ fun TvPlayerScreen(
     }
 
     LaunchedEffect(media.streamUrl) {
-        val mediaItem = buildTvMediaItem(media)
-        player.setMediaItem(mediaItem)
-        player.prepare()
-        if (media.resumePositionMs > 0) {
-            player.seekTo(media.resumePositionMs)
-        }
-        player.playWhenReady = true
+        playTvMedia(player, media)
     }
 
     Box(
