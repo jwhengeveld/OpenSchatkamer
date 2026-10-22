@@ -88,20 +88,87 @@ object SchatkamerParser {
     }
 
     /**
+     * Controleert of een titel generiek, ontbrekend of onbruikbaar is (zoals 'Geen afleveringstitel').
+     */
+    fun isGenericOrEmptyTitle(title: String?): Boolean {
+        if (title.isNullOrBlank()) return true
+        val t = title.trim().lowercase()
+        return t == "geen afleveringstitel" ||
+                t == "zonder titel" ||
+                t == "geen titel" ||
+                t == "onbekend" ||
+                t == "niet bekend" ||
+                t.startsWith("niet bekend -") ||
+                t.startsWith("niet bekend-") ||
+                t == "null" ||
+                t == "undefined"
+    }
+
+    /**
+     * Construeert een betekenisvolle, nette titel aan de hand van serienaam, uitzenddatum of beschrijving.
+     */
+    fun buildSmartTitle(
+        rawTitle: String?,
+        subTitle: String = "",
+        seriesTitle: String = "",
+        date: String = "",
+        description: String = "",
+        broadcaster: String = ""
+    ): String {
+        val series = cleanStr(subTitle.ifBlank { seriesTitle })
+        var cleanedRaw = cleanStr(rawTitle)
+        if (cleanedRaw.startsWith("null:", ignoreCase = true)) {
+            cleanedRaw = cleanedRaw.substring(5).trim()
+        }
+        if (cleanedRaw.startsWith("undefined:", ignoreCase = true)) {
+            cleanedRaw = cleanedRaw.substring(10).trim()
+        }
+        val isGeneric = isGenericOrEmptyTitle(cleanedRaw)
+
+        return when {
+            !isGeneric && series.isNotBlank() && !cleanedRaw.contains(series, ignoreCase = true) -> {
+                "$series: $cleanedRaw"
+            }
+            !isGeneric -> cleanedRaw
+            series.isNotBlank() && date.isNotBlank() -> {
+                "$series ($date)"
+            }
+            series.isNotBlank() -> series
+            description.isNotBlank() -> {
+                val snippet = description.take(65).substringBefore(".").trim()
+                if (snippet.isNotBlank() && !isGenericOrEmptyTitle(snippet)) snippet else description.take(50).trim()
+            }
+            date.isNotBlank() -> "Uitzending $date"
+            broadcaster.isNotBlank() -> "Archiefopname $broadcaster"
+            else -> "Archiefuitzending"
+        }
+    }
+
+    /**
      * Parset een SchatkamerItem uit een JSON-object.
      */
     fun parseItem(obj: JSONObject): SchatkamerItem? {
-        val id = obj.optString("id").ifBlank { obj.optString("programId") }
-        val title = obj.optString("title").ifBlank { obj.optString("name") }
-        if (id.isBlank() && title.isBlank()) return null
+        val id = cleanStr(obj.optString("id").ifBlank { obj.optString("programId") })
+        val rawTitle = cleanStr(obj.optString("title").ifBlank { obj.optString("name") })
+        if (id.isBlank() && rawTitle.isBlank()) return null
 
-        val subTitle = cleanStr(obj.optString("subTitle", ""))
-        val description = cleanStr(obj.optString("description", ""))
-        val date = cleanStr(obj.optString("date", ""))
+        val seriesTitle = cleanStr(obj.optString("seriesTitle", ""))
+        val subTitle = cleanStr(obj.optString("subTitle", "")).ifBlank { seriesTitle }
+        val description = cleanStr(obj.optString("description", "")).ifBlank { cleanStr(obj.optString("summary", "")) }
+        val date = cleanStr(obj.optString("date", "")).ifBlank { cleanStr(obj.optString("publishedAt", "")) }
         val mediaType = cleanStr(obj.optString("mediaType", "video")).ifBlank { "video" }
         val broadcaster = cleanStr(obj.optString("broadcaster", ""))
         val url = cleanStr(obj.optString("url", ""))
         val isPlayable = obj.optBoolean("isPlayable", true)
+
+        val title = buildSmartTitle(
+            rawTitle = rawTitle,
+            subTitle = subTitle,
+            seriesTitle = seriesTitle,
+            date = date,
+            description = description,
+            broadcaster = broadcaster
+        )
 
         var imageUrl = ""
         val imgObj = obj.optJSONObject("image")
@@ -155,15 +222,24 @@ object SchatkamerParser {
                     val items = mutableListOf<SchatkamerItem>()
                     for (i in 0 until array.length()) {
                         val itemObj = array.optJSONObject(i) ?: continue
-                        val id = itemObj.optString("id")
-                        val title = itemObj.optString("title")
-                        val seriesTitle = itemObj.optString("seriesTitle").takeIf { it.isNotBlank() }
-                        val desc = itemObj.optString("description")
-                        val date = itemObj.optString("date")
-                        val mediaType = itemObj.optString("mediaType", "video")
-                        val broadcaster = itemObj.optString("broadcaster")
-                        val url = itemObj.optString("url")
+                        val id = cleanStr(itemObj.optString("id"))
+                        val rawTitle = cleanStr(itemObj.optString("title"))
+                        val seriesTitle = cleanStr(itemObj.optString("seriesTitle"))
+                        val desc = cleanStr(itemObj.optString("description"))
+                        val date = cleanStr(itemObj.optString("date"))
+                        val mediaType = cleanStr(itemObj.optString("mediaType", "video")).ifBlank { "video" }
+                        val broadcaster = cleanStr(itemObj.optString("broadcaster"))
+                        val url = cleanStr(itemObj.optString("url"))
                         val isPlayable = itemObj.optBoolean("isPlayable", true)
+
+                        val title = buildSmartTitle(
+                            rawTitle = rawTitle,
+                            subTitle = seriesTitle,
+                            seriesTitle = seriesTitle,
+                            date = date,
+                            description = desc,
+                            broadcaster = broadcaster
+                        )
 
                         var imageUrl = ""
                         val imgObj = itemObj.optJSONObject("image")
@@ -175,7 +251,7 @@ object SchatkamerParser {
                             SchatkamerItem(
                                 id = id,
                                 title = title,
-                                subTitle = seriesTitle ?: date,
+                                subTitle = seriesTitle.ifBlank { date },
                                 description = desc,
                                 date = date,
                                 mediaType = mediaType,
@@ -214,9 +290,23 @@ object SchatkamerParser {
             val unescapedJson = unescapeHtmlEntities(rawJson)
             val json = runCatching { JSONObject(unescapedJson) }.getOrNull() ?: continue
 
-            val title = json.optString("title", "")
-            val subTitle = json.optString("subTitle", "")
-            val broadcaster = json.optString("broadcaster", "")
+            val rawTitle = unescapeHtmlEntities(json.optString("title", "")).trim()
+            val rawSubTitle = unescapeHtmlEntities(json.optString("subTitle", "")).trim()
+            val broadcaster = unescapeHtmlEntities(json.optString("broadcaster", "")).trim()
+
+            // Vind datum in innerHtml
+            val dateMatcher = java.util.regex.Pattern.compile("\\b(\\d{1,2}\\s+[a-zA-Z]+\\s+\\d{4}|\\d{4}-\\d{2}-\\d{2})\\b").matcher(innerHtml)
+            val cardDate = if (dateMatcher.find()) dateMatcher.group(1).orEmpty() else ""
+
+            // Vind beschrijving in innerHtml (tekst zonder HTML tags)
+            val textOnly = stripHtml(innerHtml)
+            var cardDesc = textOnly
+            for (removeToken in listOf(rawTitle, rawSubTitle, broadcaster, cardDate, "Geen afleveringstitel")) {
+                if (removeToken.isNotBlank()) {
+                    cardDesc = cardDesc.replace(removeToken, "")
+                }
+            }
+            cardDesc = cardDesc.replace(Regex("^[-–—\\s,.:;]+"), "").replace(Regex("\\s+"), " ").trim()
 
             // Vind href in innerHtml
             val hrefMatcher = java.util.regex.Pattern.compile("href=\"([^\"]+)\"").matcher(innerHtml)
@@ -242,19 +332,22 @@ object SchatkamerParser {
             val idMatcher = java.util.regex.Pattern.compile("/(?:aflevering|programma|serie)/(\\d+)").matcher(href)
             val id = if (idMatcher.find()) idMatcher.group(1).orEmpty() else href.hashCode().toString()
 
-            if (title.isNotBlank() || subTitle.isNotBlank()) {
-                val displayTitle = if (subTitle.isNotBlank() && title != "Geen afleveringstitel" && title.isNotBlank()) {
-                    "$subTitle - $title"
-                } else {
-                    title.ifBlank { subTitle }
-                }
+            val displayTitle = buildSmartTitle(
+                rawTitle = rawTitle,
+                subTitle = rawSubTitle,
+                date = cardDate,
+                description = cardDesc,
+                broadcaster = broadcaster
+            )
+
+            if (displayTitle.isNotBlank()) {
                 items.add(
                     SchatkamerItem(
                         id = id,
                         title = displayTitle,
-                        subTitle = subTitle.ifBlank { broadcaster },
-                        description = "",
-                        date = "",
+                        subTitle = rawSubTitle.ifBlank { broadcaster },
+                        description = cardDesc,
+                        date = cardDate,
                         mediaType = "video",
                         broadcaster = broadcaster,
                         imageUrl = imageUrl,
@@ -268,6 +361,13 @@ object SchatkamerParser {
         return SearchResult(query = query, total = items.size, items = items)
     }
 
+    private fun stripHtml(text: String): String {
+        return text.replace(Regex("<[^>]+>"), " ")
+            .let { unescapeHtmlEntities(it) }
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
     private fun unescapeHtmlEntities(text: String): String {
         return text.replace("&quot;", "\"")
             .replace("&amp;", "&")
@@ -275,6 +375,13 @@ object SchatkamerParser {
             .replace("&gt;", ">")
             .replace("&#x27;", "'")
             .replace("&#39;", "'")
+            .replace("&nbsp;", " ")
+            .replace("&ndash;", "–")
+            .replace("&mdash;", "—")
+            .replace("&eacute;", "é")
+            .replace("&euml;", "ë")
+            .replace("&iuml;", "ï")
+            .replace("&oacute;", "ó")
     }
 
     /**
@@ -311,23 +418,35 @@ object SchatkamerParser {
             if (progJsonStr != null) {
                 runCatching {
                     val p = JSONObject(progJsonStr)
-                    title = p.optString("title").ifBlank { p.optString("name") }
-                    description = p.optString("description")
-                    date = p.optString("publishedAt")
-                    mediaType = p.optString("mediaType", "video")
-                    collection = p.optString("collection")
-                    legalBasisText = p.optString("legalBasisText")
+                    val rawTitle = cleanStr(p.optString("title").ifBlank { p.optString("name") })
+                    description = cleanStr(p.optString("description"))
+                    date = cleanStr(p.optString("publishedAt"))
+                    mediaType = cleanStr(p.optString("mediaType", "video")).ifBlank { "video" }
+                    collection = cleanStr(p.optString("collection"))
+                    legalBasisText = cleanStr(p.optString("legalBasisText"))
 
                     val seriesObj = p.optJSONObject("series")
                     if (seriesObj != null) {
-                        seriesId = seriesObj.optString("id").takeIf { it.isNotBlank() }
-                        seriesTitle = seriesObj.optString("title").takeIf { it.isNotBlank() }
-                        seriesSlug = seriesObj.optString("slug").takeIf { it.isNotBlank() }
+                        seriesId = cleanStr(seriesObj.optString("id")).takeIf { it.isNotBlank() }
+                        seriesTitle = cleanStr(seriesObj.optString("title")).takeIf { it.isNotBlank() }
+                        seriesSlug = cleanStr(seriesObj.optString("slug")).takeIf { it.isNotBlank() }
                     }
 
                     val broadcasterObj = p.optJSONObject("broadcaster")
                     if (broadcasterObj != null) {
-                        broadcaster = broadcasterObj.optString("name")
+                        broadcaster = cleanStr(broadcasterObj.optString("name"))
+                    }
+
+                    title = if (!isGenericOrEmptyTitle(rawTitle)) {
+                        rawTitle
+                    } else {
+                        buildSmartTitle(
+                            rawTitle = rawTitle,
+                            seriesTitle = seriesTitle.orEmpty(),
+                            date = date,
+                            description = description,
+                            broadcaster = broadcaster
+                        )
                     }
 
                     val imgObj = p.optJSONObject("image")
@@ -371,10 +490,13 @@ object SchatkamerParser {
         }
 
         // Fallback voor titel en poster
-        if (title.isBlank()) {
+        if (title.isBlank() || isGenericOrEmptyTitle(title)) {
             val titleMatch = Pattern.compile("<title>(.*?)</title>").matcher(html)
             if (titleMatch.find()) {
-                title = titleMatch.group(1)?.substringBefore(" | ")?.trim().orEmpty()
+                val extracted = titleMatch.group(1)?.substringBefore(" | ")?.trim().orEmpty()
+                if (!isGenericOrEmptyTitle(extracted)) {
+                    title = extracted
+                }
             }
         }
         if (imageUrl.isBlank() && streamInfo != null) {

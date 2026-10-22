@@ -11,8 +11,15 @@ import java.io.File
  */
 class CatalogSnapshotStore(context: Context) {
 
-    private val dir = File(context.applicationContext.noBackupFilesDir, "schatkamer_snapshots").apply {
+    private val dir = File(context.applicationContext.noBackupFilesDir, "schatkamer_snapshots_v2").apply {
         if (!exists()) mkdirs()
+    }
+
+    init {
+        runCatching {
+            val oldDir = File(context.applicationContext.noBackupFilesDir, "schatkamer_snapshots")
+            if (oldDir.exists()) oldDir.deleteRecursively()
+        }
     }
 
     private val homeFile = File(dir, "home_snapshot.json")
@@ -121,16 +128,29 @@ class CatalogSnapshotStore(context: Context) {
 
     private fun jsonToItem(obj: JSONObject): SchatkamerItem? {
         val id = obj.optString("id")
-        val title = obj.optString("title")
-        if (id.isBlank() && title.isBlank()) return null
+        val rawTitle = obj.optString("title")
+        if (id.isBlank() && rawTitle.isBlank()) return null
+        val subTitle = obj.optString("subTitle", "").let { if (it.equals("null", true)) "" else it }
+        val date = obj.optString("date", "").let { if (it.equals("null", true)) "" else it }
+        val desc = obj.optString("description", "").let { if (it.equals("null", true)) "" else it }
         val b = obj.optString("broadcaster", "").trim()
         val cleanBroadcaster = if (b.equals("null", ignoreCase = true) || b.equals("undefined", ignoreCase = true)) "" else b
+
+        val title = SchatkamerParser.buildSmartTitle(
+            rawTitle = rawTitle,
+            subTitle = subTitle,
+            seriesTitle = "",
+            date = date,
+            description = desc,
+            broadcaster = cleanBroadcaster
+        )
+
         return SchatkamerItem(
             id = id,
             title = title,
-            subTitle = obj.optString("subTitle", "").let { if (it.equals("null", true)) "" else it },
-            description = obj.optString("description", "").let { if (it.equals("null", true)) "" else it },
-            date = obj.optString("date", "").let { if (it.equals("null", true)) "" else it },
+            subTitle = subTitle,
+            description = desc,
+            date = date,
             mediaType = obj.optString("mediaType", "video"),
             broadcaster = cleanBroadcaster,
             imageUrl = obj.optString("imageUrl", ""),

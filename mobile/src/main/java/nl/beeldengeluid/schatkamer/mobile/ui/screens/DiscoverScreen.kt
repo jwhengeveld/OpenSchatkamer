@@ -1,5 +1,6 @@
 package nl.beeldengeluid.schatkamer.mobile.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -78,6 +79,10 @@ fun DiscoverScreen(
     var selectedCategoryTitle by remember { mutableStateOf<String?>(null) }
     val selectedPrograms by viewModel.selectedItems.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+
+    BackHandler(enabled = selectedCategoryTitle != null) {
+        selectedCategoryTitle = null
+    }
 
     Scaffold(
         topBar = {

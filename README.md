@@ -50,6 +50,13 @@ Schatkamer/
   - `FavoritesRepository`: Lokale opslag van favorieten ("Mijn Lijst").
 
 ### 3. `:mobile` (Telefoon & Tablet)
+- **Terugknop Navigatiestack (Back Handling)**:
+  - Volledige hiërarchische terug-navigatie: Speler sluiten -> Programmadetail sluiten -> Categorie/Zoekopdracht resetten -> Terugkeren naar Start-tab -> Pas bij startscherm app afsluiten. Voorkomt dat de app onverwacht afsluit bij het indrukken van de terugknop of bij het uitvoeren van het terug-veeggebaar.
+- **Slimme Titels & Geen "Geen afleveringstitel" Meer**:
+  - Automatische reconstructie van betekenisvolle titels voor archiefuitzendingen aan de hand van serienaam, uitzenddatum (`KERKDIENST (1956-12-09)` ipv `Geen afleveringstitel`) en beschrijving.
+  - Disk snapshot cache geüpgraded naar `v2` met automatische opschoning van verouderde gegevens.
+- **Systeemrotatie & Tablet Support**:
+  - Volgt naadloos de systeemrotatie van het toestel; geoptimaliseerd voor zowel smartphones als tablets.
 - **Native Zender Knoppen (Google Cast & Apple AirPlay)**:
   - **Standaard Google Cast Knop**: Direct geïntegreerd in de topbalk en videospeler. Opent direct de native Android `MediaRouteChooserDialog` voor betrouwbare verbinding met Chromecast en Google Nest schermen.
   - **Dedicated Apple AirPlay Zender Knop**: Opent een stabiel `AirPlaySenderDialog` met live mDNS discovery (`_airplay._tcp`), apparaatselectie, verbindingsstatus en afstandsbediening (play/pause/seek).

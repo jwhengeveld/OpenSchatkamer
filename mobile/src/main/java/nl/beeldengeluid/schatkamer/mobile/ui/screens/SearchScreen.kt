@@ -1,5 +1,6 @@
 package nl.beeldengeluid.schatkamer.mobile.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -62,6 +63,10 @@ fun SearchScreen(
 ) {
     val query by viewModel.query.collectAsState()
     val state by viewModel.uiState.collectAsState()
+
+    BackHandler(enabled = query.isNotBlank()) {
+        viewModel.onQueryChanged("")
+    }
 
     val suggestions = listOf("EO", "Polygoon", "Journaal", "Cabaret", "Van Kooten en De Bie", "Kinderen voor Kinderen")
 

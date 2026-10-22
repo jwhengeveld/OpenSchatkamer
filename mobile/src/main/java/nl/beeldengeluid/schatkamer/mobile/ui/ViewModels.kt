@@ -235,6 +235,7 @@ class ProgramDetailViewModel(
 class MainNavigationViewModel : ViewModel() {
     var splashFinished = false
     val selectedTab = MutableStateFlow(0)
+    private val programStack = mutableListOf<SchatkamerItem>()
     val selectedProgram = MutableStateFlow<SchatkamerItem?>(null)
     val showPlayerScreen = MutableStateFlow(false)
 
@@ -248,11 +249,59 @@ class MainNavigationViewModel : ViewModel() {
 
     fun selectTab(tab: Int) {
         selectedTab.value = tab
+        programStack.clear()
         selectedProgram.value = null
     }
 
     fun selectProgram(item: SchatkamerItem?) {
-        selectedProgram.value = item
+        if (item == null) {
+            programStack.clear()
+            selectedProgram.value = null
+        } else {
+            if (programStack.lastOrNull()?.id != item.id) {
+                programStack.add(item)
+            }
+            selectedProgram.value = item
+        }
+    }
+
+    fun goBackProgram(): Boolean {
+        if (programStack.size > 1) {
+            programStack.removeAt(programStack.lastIndex)
+            selectedProgram.value = programStack.last()
+            return true
+        } else if (programStack.size == 1) {
+            programStack.clear()
+            selectedProgram.value = null
+            return true
+        } else if (selectedProgram.value != null) {
+            selectedProgram.value = null
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Handelt een terug-actie af op globaal niveau.
+     * Volgorde:
+     * 1. Volledig speler-scherm sluiten (video blijft spelen in MiniPlayer)
+     * 2. Programmadetails terug navigeren (vorige programma of sluiten)
+     * 3. Naar start-tab terugkeren als we op een ander tabblad zitten
+     * Geeft true terug als de actie is afgehandeld, false als de app mag sluiten.
+     */
+    fun handleBack(): Boolean {
+        if (showPlayerScreen.value) {
+            closePlayer()
+            return true
+        }
+        if (goBackProgram()) {
+            return true
+        }
+        if (selectedTab.value != 0) {
+            selectTab(0)
+            return true
+        }
+        return false
     }
 }
 

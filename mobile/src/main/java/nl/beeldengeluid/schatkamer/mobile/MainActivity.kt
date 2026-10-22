@@ -178,20 +178,9 @@ fun MainContent(
 
     val playbackState by app.playback.state.collectAsState()
 
-    // Behoud spelerweergave als er media aan het afspelen is
-    LaunchedEffect(playbackState.media, playbackState.isPlaying) {
-        if (playbackState.media != null && playbackState.isPlaying && !showPlayerScreen && selectedProgram == null) {
-            navViewModel.openPlayer()
-        }
-    }
-
-    // BackHandler navigatie
-    BackHandler(enabled = showPlayerScreen || selectedProgram != null) {
-        if (showPlayerScreen) {
-            navViewModel.closePlayer()
-        } else if (selectedProgram != null) {
-            navViewModel.selectProgram(null)
-        }
+    // BackHandler navigatie: handelt speler, programmadetail en tabbladen af
+    BackHandler(enabled = showPlayerScreen || selectedProgram != null || selectedTab != 0) {
+        navViewModel.handleBack()
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -281,7 +270,7 @@ fun MainContent(
                     ProgramDetailScreen(
                         item = selectedProgram!!,
                         viewModel = detailViewModel,
-                        onBack = { navViewModel.selectProgram(null) },
+                        onBack = { navViewModel.goBackProgram() },
                         onPlay = { media ->
                             app.playback.play(media)
                             navViewModel.openPlayer()

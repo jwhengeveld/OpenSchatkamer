@@ -1,6 +1,7 @@
 package nl.beeldengeluid.schatkamer.mobile.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -85,6 +86,10 @@ fun ProgramDetailScreen(
     onSelectEpisode: (SchatkamerItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    BackHandler {
+        onBack()
+    }
+
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
 
