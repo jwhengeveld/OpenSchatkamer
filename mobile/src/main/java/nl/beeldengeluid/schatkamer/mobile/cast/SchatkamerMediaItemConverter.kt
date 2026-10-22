@@ -117,6 +117,7 @@ class SchatkamerMediaItemConverter : MediaItemConverter {
 
         return MediaQueueItem.Builder(mediaInfo)
             .setAutoplay(true)
+            .setCustomData(customData)
             .build()
     }
 
@@ -129,6 +130,7 @@ class SchatkamerMediaItemConverter : MediaItemConverter {
 
         return MediaItem.Builder()
             .setUri(info.contentUrl ?: info.contentId)
+            .setMimeType(info.contentType ?: "application/x-mpegurl")
             .setMediaMetadata(
                 androidx.media3.common.MediaMetadata.Builder()
                     .setTitle(title)

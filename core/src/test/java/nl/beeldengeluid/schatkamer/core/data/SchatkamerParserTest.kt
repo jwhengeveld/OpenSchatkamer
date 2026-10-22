@@ -145,5 +145,21 @@ class SchatkamerParserTest {
         assertEquals("jeugdprogramma", result.availableGenres[0].label)
     }
 
+    @Test
+    fun testExtractStreamTokensWithNextJsEscapingAndChunkMarkers() {
+        val nextJsPayload = """
+            26:T458,https://sk-video.cdn.beeldengeluid.nl/MIJNFRANSETAN-HRE0000381C/cmaf/master.m3u8?CloudFront-Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9zay12aWRlby5jZG4uYmVlbGRlbmdlbHVpZC5ubC9NSUpORlJBTlNFVEFOLUhSRTAwMDAzODFDLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3OTI3NTU0MDl9fX1dfQ__\u0026CloudFront-Signature=kY~-5RG0zHDw7ycuRRJTUe12XakUPmv3RUZSKBWHLGJqvqq6kHkviZicGXF4zu4S69zBFMx1XBFV6iibuOkY5MZJxze06JdMVbWeGgmf0VrEEoHpQBwznG~8CqBZaX5QzPGyFJCTIz5oq2VNgHxgt3YNhbeBa~DtMI1Zgp-qwZv7vXkz-4uY71ASbQyOZGPYedvlbLGWWXrOwfP~14lENXM2BH7yaxVf73GsAB93cUetTC9SD9ZvIpp85XnQAc92fUhZF1VCV-10spOqgIGLqGtMYtoaKBry24N4EsBWNhSwLLEYrrnvphA7gBaZdXg-LQlS1gYC-HovBYlT5obUNw__\u0026CloudFront-Key-Pair-Id=K1C5L1HDJC2G68\u0026Expires=1792672609\u0026Signature=cvKB1LbWtfj2bHkbXFIVoTuSA0lyyX0o78WwdSHDMO6SCRM95aOgIzu1kpgIE1YHpc11zQCjuf-cecqaux6abJuBhabL3DCi~5djbYW49ko47qktbzWRn-E4CU1CDc1YSUPW8xOHJ24nUULY3RxtszjT2HFCbHEivFPUYuupULOvrzq~P-fE8~ydwkPf66fueKHvzPxcjZ-VVnTqqQJUsX8csAMCMY~c3viov4MxGW-4Lx38ws0~dpl5lX1V4RsvfFR0hftcZfoZiygJ0bugAe9lfwaJNTPM5315Bi~9XUx-M2E~Rhp4teYd8V~8RCBgXh7d-8guhwzt5fV4Z35SEA__\u0026Key-Pair-Id=K1C5L1HDJC2G6824:["${'$'}","${'$'}L25",null,{"program":{"id":"2101608040030802031"}}]
+        """.trimIndent()
+
+        val tokens = SchatkamerParser.extractStreamTokens(nextJsPayload)
+        assertNotNull("Tokens should not be null", tokens)
+        assertFalse("Stream URL must not contain escaped ampersand", tokens!!.streamUrl.contains("\\u0026"))
+        assertFalse("Stream URL must not contain Next.js chunk marker", tokens.streamUrl.contains("24:["))
+        assertTrue("Stream URL must have clean Policy", tokens.streamUrl.contains("Policy=eyJTdGF0"))
+        assertTrue("Stream URL must have clean Signature", tokens.streamUrl.contains("Signature=kY~-5RG0"))
+        assertTrue("Stream URL must have clean Key-Pair-Id", tokens.streamUrl.endsWith("Key-Pair-Id=K1C5L1HDJC2G68"))
+        assertEquals("CloudFront-Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9zay12aWRlby5jZG4uYmVlbGRlbmdlbHVpZC5ubC9NSUpORlJBTlNFVEFOLUhSRTAwMDAzODFDLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3OTI3NTU0MDl9fX1dfQ__; CloudFront-Signature=kY~-5RG0zHDw7ycuRRJTUe12XakUPmv3RUZSKBWHLGJqvqq6kHkviZicGXF4zu4S69zBFMx1XBFV6iibuOkY5MZJxze06JdMVbWeGgmf0VrEEoHpQBwznG~8CqBZaX5QzPGyFJCTIz5oq2VNgHxgt3YNhbeBa~DtMI1Zgp-qwZv7vXkz-4uY71ASbQyOZGPYedvlbLGWWXrOwfP~14lENXM2BH7yaxVf73GsAB93cUetTC9SD9ZvIpp85XnQAc92fUhZF1VCV-10spOqgIGLqGtMYtoaKBry24N4EsBWNhSwLLEYrrnvphA7gBaZdXg-LQlS1gYC-HovBYlT5obUNw__; CloudFront-Key-Pair-Id=K1C5L1HDJC2G68", tokens.cookieHeader)
+    }
+
     private fun SatkamerParserIsGeneric(t: String) = SchatkamerParser.isGenericOrEmptyTitle(t)
 }

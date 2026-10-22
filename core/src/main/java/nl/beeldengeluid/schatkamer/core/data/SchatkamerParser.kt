@@ -602,14 +602,24 @@ object SchatkamerParser {
         val baseUrl = urlSection.substring(0, baseEnd)
 
         val scope = if (urlSection.length > 300) urlSection else text
+        val cleanScope = scope.replace("\\u0026", "&")
 
-        val polMatch = Pattern.compile("(?:CloudFront-Policy|Policy)=([^\\\\&\"'\\s;,]+)").matcher(scope)
-        val sigMatch = Pattern.compile("(?:CloudFront-Signature|Signature)=([^\\\\&\"'\\s;,]+)").matcher(scope)
-        val keyMatch = Pattern.compile("(?:CloudFront-Key-Pair-Id|Key-Pair-Id)=([^\\\\&\"'\\s;,]+)").matcher(scope)
+        val polMatch = Pattern.compile("CloudFront-Policy=([A-Za-z0-9_~=-]+)").matcher(cleanScope)
+        val sigMatch = Pattern.compile("CloudFront-Signature=([A-Za-z0-9_~=-]+)").matcher(cleanScope)
+        val keyMatch = Pattern.compile("CloudFront-Key-Pair-Id=([A-Za-z0-9]+)").matcher(cleanScope)
 
-        val policy = if (polMatch.find()) polMatch.group(1).orEmpty() else ""
-        val signature = if (sigMatch.find()) sigMatch.group(1).orEmpty() else ""
-        val keyPairId = if (keyMatch.find()) keyMatch.group(1).orEmpty() else ""
+        var policy = if (polMatch.find()) polMatch.group(1).orEmpty() else ""
+        var signature = if (sigMatch.find()) sigMatch.group(1).orEmpty() else ""
+        var keyPairId = if (keyMatch.find()) keyMatch.group(1).orEmpty() else ""
+
+        if (policy.isBlank() || signature.isBlank() || keyPairId.isBlank()) {
+            val fallbackPol = Pattern.compile("(?:CloudFront-Policy|Policy)=([A-Za-z0-9_~=-]+)").matcher(cleanScope)
+            val fallbackSig = Pattern.compile("(?:CloudFront-Signature|Signature)=([A-Za-z0-9_~=-]+)").matcher(cleanScope)
+            val fallbackKey = Pattern.compile("(?:CloudFront-Key-Pair-Id|Key-Pair-Id)=([A-Za-z0-9]+)").matcher(cleanScope)
+            if (policy.isBlank() && fallbackPol.find()) policy = fallbackPol.group(1).orEmpty()
+            if (signature.isBlank() && fallbackSig.find()) signature = fallbackSig.group(1).orEmpty()
+            if (keyPairId.isBlank() && fallbackKey.find()) keyPairId = fallbackKey.group(1).orEmpty()
+        }
 
         return if (policy.isNotBlank() && signature.isNotBlank() && keyPairId.isNotBlank()) {
             val cleanUrl = "$baseUrl?Policy=$policy&Signature=$signature&Key-Pair-Id=$keyPairId"
