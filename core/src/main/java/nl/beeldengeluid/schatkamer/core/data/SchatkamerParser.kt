@@ -95,20 +95,20 @@ object SchatkamerParser {
         val title = obj.optString("title").ifBlank { obj.optString("name") }
         if (id.isBlank() && title.isBlank()) return null
 
-        val subTitle = obj.optString("subTitle", "")
-        val description = obj.optString("description", "")
-        val date = obj.optString("date", "")
-        val mediaType = obj.optString("mediaType", "video")
-        val broadcaster = obj.optString("broadcaster", "")
-        val url = obj.optString("url", "")
+        val subTitle = cleanStr(obj.optString("subTitle", ""))
+        val description = cleanStr(obj.optString("description", ""))
+        val date = cleanStr(obj.optString("date", ""))
+        val mediaType = cleanStr(obj.optString("mediaType", "video")).ifBlank { "video" }
+        val broadcaster = cleanStr(obj.optString("broadcaster", ""))
+        val url = cleanStr(obj.optString("url", ""))
         val isPlayable = obj.optBoolean("isPlayable", true)
 
         var imageUrl = ""
         val imgObj = obj.optJSONObject("image")
         if (imgObj != null) {
-            imageUrl = imgObj.optString("url", "")
+            imageUrl = cleanStr(imgObj.optString("url", ""))
         } else {
-            imageUrl = obj.optString("imageUrl", "")
+            imageUrl = cleanStr(obj.optString("imageUrl", ""))
         }
 
         var seriesId: String? = null
@@ -139,7 +139,7 @@ object SchatkamerParser {
     }
 
     /**
-     * Parset zoekresultaten uit /zoeken?q=...
+     * Parset zoekresultaten uit /zoeken?q=... of direct uit HTML kaarten.
      */
     fun parseSearch(html: String, query: String): SearchResult {
         val payload = extractRscPayload(html)
@@ -147,53 +147,134 @@ object SchatkamerParser {
 
         // Zoek naar `"results":[`
         val resultsIdx = text.indexOf("\"results\":[")
-        if (resultsIdx == -1) {
-            return SearchResult(query = query, total = 0, items = emptyList())
-        }
+        if (resultsIdx != -1) {
+            val arrayStr = extractBalancedJsonArray(text, resultsIdx + 10)
+            if (arrayStr != null) {
+                val jsonResult = runCatching {
+                    val array = JSONArray(arrayStr)
+                    val items = mutableListOf<SchatkamerItem>()
+                    for (i in 0 until array.length()) {
+                        val itemObj = array.optJSONObject(i) ?: continue
+                        val id = itemObj.optString("id")
+                        val title = itemObj.optString("title")
+                        val seriesTitle = itemObj.optString("seriesTitle").takeIf { it.isNotBlank() }
+                        val desc = itemObj.optString("description")
+                        val date = itemObj.optString("date")
+                        val mediaType = itemObj.optString("mediaType", "video")
+                        val broadcaster = itemObj.optString("broadcaster")
+                        val url = itemObj.optString("url")
+                        val isPlayable = itemObj.optBoolean("isPlayable", true)
 
-        val arrayStr = extractBalancedJsonArray(text, resultsIdx + 10)
-        if (arrayStr == null) {
-            return SearchResult(query = query, total = 0, items = emptyList())
-        }
+                        var imageUrl = ""
+                        val imgObj = itemObj.optJSONObject("image")
+                        if (imgObj != null) {
+                            imageUrl = imgObj.optString("url")
+                        }
 
-        return runCatching {
-            val array = JSONArray(arrayStr)
-            val items = mutableListOf<SchatkamerItem>()
-            for (i in 0 until array.length()) {
-                val itemObj = array.optJSONObject(i) ?: continue
-                val id = itemObj.optString("id")
-                val title = itemObj.optString("title")
-                val seriesTitle = itemObj.optString("seriesTitle").takeIf { it.isNotBlank() }
-                val desc = itemObj.optString("description")
-                val date = itemObj.optString("date")
-                val mediaType = itemObj.optString("mediaType", "video")
-                val broadcaster = itemObj.optString("broadcaster")
-                val url = itemObj.optString("url")
-                val isPlayable = itemObj.optBoolean("isPlayable", true)
+                        items.add(
+                            SchatkamerItem(
+                                id = id,
+                                title = title,
+                                subTitle = seriesTitle ?: date,
+                                description = desc,
+                                date = date,
+                                mediaType = mediaType,
+                                broadcaster = broadcaster,
+                                imageUrl = imageUrl,
+                                url = url,
+                                isPlayable = isPlayable
+                            )
+                        )
+                    }
+                    if (items.isNotEmpty()) SearchResult(query = query, total = items.size, items = items) else null
+                }.getOrNull()
 
-                var imageUrl = ""
-                val imgObj = itemObj.optJSONObject("image")
-                if (imgObj != null) {
-                    imageUrl = imgObj.optString("url")
+                if (jsonResult != null && jsonResult.items.isNotEmpty()) {
+                    return jsonResult
                 }
+            }
+        }
 
+        // Fallback: parseer HTML kaarten direct uit de DOM/SSR
+        return parseHtmlCards(html, query)
+    }
+
+    /**
+     * Parset kaart-elementen direct uit de HTML (zoals op omroep- en genre-pagina's).
+     */
+    fun parseHtmlCards(html: String, query: String): SearchResult {
+        val items = mutableListOf<SchatkamerItem>()
+        val liPattern = java.util.regex.Pattern.compile("<li[^>]*data-gtm-component=\"([^\"]+)\"[^>]*>(.*?)</li>", java.util.regex.Pattern.DOTALL)
+        val matcher = liPattern.matcher(html)
+
+        while (matcher.find()) {
+            val rawJson = matcher.group(1).orEmpty()
+            val innerHtml = matcher.group(2).orEmpty()
+
+            val unescapedJson = unescapeHtmlEntities(rawJson)
+            val json = runCatching { JSONObject(unescapedJson) }.getOrNull() ?: continue
+
+            val title = json.optString("title", "")
+            val subTitle = json.optString("subTitle", "")
+            val broadcaster = json.optString("broadcaster", "")
+
+            // Vind href in innerHtml
+            val hrefMatcher = java.util.regex.Pattern.compile("href=\"([^\"]+)\"").matcher(innerHtml)
+            val href = if (hrefMatcher.find()) hrefMatcher.group(1).orEmpty() else ""
+
+            // Vind image url in innerHtml (via url=... in srcSet of src)
+            var imageUrl = ""
+            val imgMatcher = java.util.regex.Pattern.compile("url=([a-zA-Z0-9_-]+)").matcher(innerHtml)
+            if (imgMatcher.find()) {
+                val b64 = imgMatcher.group(1).orEmpty()
+                runCatching {
+                    val padded = b64 + "=".repeat((4 - b64.length % 4) % 4)
+                    val decoded = String(android.util.Base64.decode(padded.replace('-', '+').replace('_', '/'), android.util.Base64.DEFAULT))
+                    if (decoded.startsWith("http")) imageUrl = decoded
+                }
+            }
+            if (imageUrl.isBlank()) {
+                val directSrcMatcher = java.util.regex.Pattern.compile("src=\"([^\"]+)\"").matcher(innerHtml)
+                if (directSrcMatcher.find()) imageUrl = directSrcMatcher.group(1).orEmpty()
+            }
+
+            // Extract ID
+            val idMatcher = java.util.regex.Pattern.compile("/(?:aflevering|programma|serie)/(\\d+)").matcher(href)
+            val id = if (idMatcher.find()) idMatcher.group(1).orEmpty() else href.hashCode().toString()
+
+            if (title.isNotBlank() || subTitle.isNotBlank()) {
+                val displayTitle = if (subTitle.isNotBlank() && title != "Geen afleveringstitel" && title.isNotBlank()) {
+                    "$subTitle - $title"
+                } else {
+                    title.ifBlank { subTitle }
+                }
                 items.add(
                     SchatkamerItem(
                         id = id,
-                        title = title,
-                        subTitle = seriesTitle ?: date,
-                        description = desc,
-                        date = date,
-                        mediaType = mediaType,
+                        title = displayTitle,
+                        subTitle = subTitle.ifBlank { broadcaster },
+                        description = "",
+                        date = "",
+                        mediaType = "video",
                         broadcaster = broadcaster,
                         imageUrl = imageUrl,
-                        url = url,
-                        isPlayable = isPlayable
+                        url = href,
+                        isPlayable = true
                     )
                 )
             }
-            SearchResult(query = query, total = items.size, items = items)
-        }.getOrDefault(SearchResult(query = query, total = 0, items = emptyList()))
+        }
+
+        return SearchResult(query = query, total = items.size, items = items)
+    }
+
+    private fun unescapeHtmlEntities(text: String): String {
+        return text.replace("&quot;", "\"")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&#x27;", "'")
+            .replace("&#39;", "'")
     }
 
     /**
@@ -504,5 +585,10 @@ object SchatkamerParser {
             }
         }
         return sb.toString()
+    }
+
+    fun cleanStr(s: String?): String {
+        val t = s?.trim().orEmpty()
+        return if (t.equals("null", ignoreCase = true) || t.equals("undefined", ignoreCase = true)) "" else t
     }
 }

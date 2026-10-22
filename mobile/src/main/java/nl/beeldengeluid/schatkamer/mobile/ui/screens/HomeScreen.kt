@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -20,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import nl.beeldengeluid.schatkamer.brand.R
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerItem
-import nl.beeldengeluid.schatkamer.mobile.cast.CastButton
+import nl.beeldengeluid.schatkamer.mobile.cast.CastButtonRow
 import nl.beeldengeluid.schatkamer.mobile.ui.HomeUiState
 import nl.beeldengeluid.schatkamer.mobile.ui.HomeViewModel
 import nl.beeldengeluid.schatkamer.mobile.ui.components.HeroBanner
@@ -53,26 +53,37 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                TopAppBar(
+                    title = {
                         Image(
                             painter = painterResource(R.drawable.schatkamer_logo),
                             contentDescription = "De Schatkamer",
-                            modifier = Modifier.height(28.dp)
+                            modifier = Modifier.height(26.dp)
                         )
-                    }
-                },
-                actions = {
-                    CastButton(modifier = Modifier.padding(end = 8.dp))
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = SchatkamerDarkBackground
+                    },
+                    actions = {
+                        CastButtonRow(modifier = Modifier.padding(end = 6.dp))
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = SchatkamerDarkBackground
+                    )
                 )
-            )
+                // Subtiele niet-blokkerende laadindicator tijdens achtergrondsynchronisatie
+                if (isRefreshing) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp),
+                        color = SchatkamerCyan,
+                        trackColor = SchatkamerDarkBackground
+                    )
+                }
+            }
         },
         containerColor = SchatkamerDarkBackground,
         modifier = modifier
@@ -126,17 +137,17 @@ fun HomeScreen(
                                 item = hero,
                                 onClick = { onSelectItem(hero) }
                             )
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
                         }
                     }
 
                     // Rijen met categorieën
                     items(s.home.rows, key = { it.id }) { row ->
-                        Column(modifier = Modifier.padding(vertical = 10.dp)) {
+                        Column(modifier = Modifier.padding(vertical = 8.dp)) {
                             Text(
                                 text = row.title,
                                 color = SchatkamerTextPrimary,
-                                fontSize = 16.sp,
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                             )
@@ -155,7 +166,7 @@ fun HomeScreen(
                     }
 
                     item {
-                        Spacer(modifier = Modifier.height(32.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
             }

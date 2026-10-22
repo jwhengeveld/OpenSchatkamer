@@ -29,8 +29,14 @@ class HomeViewModel(
     private val catalogRepo: SchatkamerCatalogRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
+    // Start direct met de gecachte snapshot zodat de startpagina in 0ms getoond wordt
+    private val _uiState = MutableStateFlow<HomeUiState>(
+        catalogRepo.cachedHome()?.let { HomeUiState.Success(it) } ?: HomeUiState.Loading
+    )
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     init {
         loadHome(forceRefresh = false)
@@ -40,10 +46,13 @@ class HomeViewModel(
         viewModelScope.launch {
             if (_uiState.value !is HomeUiState.Success) {
                 _uiState.value = HomeUiState.Loading
+            } else {
+                _isRefreshing.value = true
             }
             catalogRepo.getHome(forceRefresh = forceRefresh)
                 .onSuccess { home ->
                     _uiState.value = HomeUiState.Success(home)
+                    _isRefreshing.value = false
                 }
                 .onFailure { error ->
                     val cached = catalogRepo.cachedHome()
@@ -52,6 +61,7 @@ class HomeViewModel(
                     } else {
                         _uiState.value = HomeUiState.Error(error.localizedMessage ?: "Fout bij laden van de Schatkamer")
                     }
+                    _isRefreshing.value = false
                 }
         }
     }
@@ -84,17 +94,37 @@ class SearchViewModel(
             return
         }
         searchJob = viewModelScope.launch {
-            delay(400) // Debounce
+            delay(300) // Snelle responsieve debounce
             performSearch(newQuery)
         }
     }
 
     fun performSearch(queryToSearch: String) {
-        if (queryToSearch.isBlank()) return
+        val trimmed = queryToSearch.trim()
+        if (trimmed.isBlank()) return
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _uiState.value = SearchUiState.Loading
-            catalogRepo.search(queryToSearch)
+
+            // Controleer of de zoekterm direct matcht met een omroep (zoals "EO", "NOS", "VPRO")
+            val broadcasterMatch = catalogRepo.getBroadcasters().firstOrNull {
+                it.slug.equals(trimmed, ignoreCase = true) ||
+                it.name.equals(trimmed, ignoreCase = true)
+            }
+            if (broadcasterMatch != null) {
+                val broadcasterResult = catalogRepo.getProgramsForBroadcaster(
+                    broadcasterMatch.id,
+                    broadcasterMatch.slug
+                ).getOrNull()
+
+                if (broadcasterResult != null && broadcasterResult.items.isNotEmpty()) {
+                    _uiState.value = SearchUiState.Success(broadcasterResult)
+                    return@launch
+                }
+            }
+
+            // Algemene archief zoekopdracht
+            catalogRepo.search(trimmed)
                 .onSuccess { result ->
                     _uiState.value = SearchUiState.Success(result)
                 }
@@ -120,10 +150,26 @@ class DiscoverViewModel(
 
     fun selectBroadcaster(b: BroadcasterItem) {
         viewModelScope.launch {
-            _isLoading.value = true
+            // Directe weergave uit cache indien aanwezig
+            val cached = catalogRepo.cachedBroadcaster(b.slug)
+            if (cached != null && cached.items.isNotEmpty()) {
+                _selectedItems.value = cached.items
+                _isLoading.value = false
+            } else {
+                _isLoading.value = true
+            }
+
             catalogRepo.getProgramsForBroadcaster(b.id, b.slug)
-                .onSuccess { _selectedItems.value = it.items }
-                .onFailure { _selectedItems.value = emptyList() }
+                .onSuccess { result ->
+                    _selectedItems.value = result.items
+                }
+                .onFailure {
+                    if (_selectedItems.value.isEmpty()) {
+                        catalogRepo.search(b.slug).onSuccess { res ->
+                            _selectedItems.value = res.items
+                        }
+                    }
+                }
             _isLoading.value = false
         }
     }

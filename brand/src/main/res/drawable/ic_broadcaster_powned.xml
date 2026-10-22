@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="40dp"
+    android:viewportWidth="120"
+    android:viewportHeight="40">
+    <!-- PowNed Vibrant Magenta Typography on Transparent Background -->
+    <!-- P -->
+    <path
+        android:fillColor="#FF007F"
+        android:pathData="M 16,10 L 26,10 C 31,10 34,13 34,17 C 34,21 31,24 26,24 L 22,24 L 22,30 L 16,30 Z M 22,15 L 22,19 L 26,19 C 27,19 28,18 28,17 C 28,16 27,15 26,15 Z" />
+    <!-- OW -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 43,10 C 37,10 33,14.5 33,20 C 33,25.5 37,30 43,30 C 49,30 53,25.5 53,20 C 53,14.5 49,10 43,10 Z M 43,15 C 45.5,15 47,17 47,20 C 47,23 45.5,25 43,25 C 40.5,25 39,23 39,20 C 39,17 40.5,15 43,15 Z" />
+    <!-- NED -->
+    <path
+        android:fillColor="#FF007F"
+        android:pathData="M 55,10 L 60,10 L 69,21 L 69,10 L 74,10 L 74,30 L 69,30 L 60,19 L 60,30 L 55,30 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 76,10 L 88,10 L 88,14 L 81,14 L 81,18 L 87,18 L 87,22 L 81,22 L 81,26 L 88,26 L 88,30 L 76,30 Z" />
+    <path
+        android:fillColor="#FF007F"
+        android:pathData="M 90,10 L 98,10 C 104,10 108,14 108,20 C 108,26 104,30 98,30 L 90,30 Z M 95,15 L 95,25 L 98,25 C 101,25 103,23 103,20 C 103,17 101,15 98,15 Z" />
+</vector>

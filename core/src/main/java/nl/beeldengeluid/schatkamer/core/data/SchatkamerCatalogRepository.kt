@@ -59,13 +59,44 @@ class SchatkamerCatalogRepository(context: Context) {
     }
 
     /**
-     * Programma's van een specifieke publieke omroep.
+     * Haalt een gecachte omroep-afspeellijst op uit het snapshot geheugen/schijf (0ms).
      */
-    suspend fun getProgramsForBroadcaster(id: String, slug: String): Result<SearchResult> = withContext(Dispatchers.IO) {
+    fun cachedBroadcaster(slug: String): SearchResult? = snapshotStore.readBroadcaster(slug)
+
+    /**
+     * Programma's van een specifieke publieke omroep met slimme Stale-While-Revalidate caching.
+     */
+    suspend fun getProgramsForBroadcaster(
+        id: String,
+        slug: String,
+        forceRefresh: Boolean = false
+    ): Result<SearchResult> = withContext(Dispatchers.IO) {
+        val cached = snapshotStore.readBroadcaster(slug)
+        if (!forceRefresh && cached != null && cached.items.isNotEmpty()) {
+            return@withContext Result.success(cached)
+        }
+
         runCatching {
             val url = "${SchatkamerHttpClient.BASE_URL}/omroep/$id/$slug"
             val html = httpClient.getHtml(url)
-            SchatkamerParser.parseSearch(html, slug)
+            val parsed = SchatkamerParser.parseSearch(html, slug)
+            if (parsed.items.isNotEmpty()) {
+                snapshotStore.writeBroadcaster(slug, parsed)
+                parsed
+            } else if (cached != null) {
+                cached
+            } else {
+                // Betrouwbare fallback: zoek direct op de omroepcode
+                val fallback = search(slug).getOrNull()
+                if (fallback != null && fallback.items.isNotEmpty()) {
+                    snapshotStore.writeBroadcaster(slug, fallback)
+                    fallback
+                } else {
+                    parsed
+                }
+            }
+        }.recoverCatching { error ->
+            cached ?: search(slug).getOrThrow()
         }
     }
 
@@ -87,15 +118,22 @@ class SchatkamerCatalogRepository(context: Context) {
     }
 
     /**
-     * Bekende publieke omroepen in de Schatkamer.
+     * Bekende publieke omroepen in de Schatkamer met officiële ID's en slugs.
      */
     fun getBroadcasters(): List<BroadcasterItem> = listOf(
         BroadcasterItem(
-            id = "209287",
+            id = "209251",
+            name = "EO",
+            slug = "eo",
+            logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/EO_logo_liggend_a637cf870b.jpg",
+            description = "Evangelische Omroep: hoop, zingeving en menselijke verhalen."
+        ),
+        BroadcasterItem(
+            id = "209284",
             name = "NOS",
             slug = "nos",
             logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/NOS_2017f2f8e7.jpg",
-            description = "Nederlandse Omroep Stichting: nieuws, sport en evenementen."
+            description = "Nederlandse Omroep Stichting: nieuws, sport en nationale evenementen."
         ),
         BroadcasterItem(
             id = "236909",
@@ -105,53 +143,67 @@ class SchatkamerCatalogRepository(context: Context) {
             description = "Voor cultuur, klassieke muziek, amusement en informatieve programma's."
         ),
         BroadcasterItem(
-            id = "236908",
+            id = "1672962",
             name = "BNNVARA",
             slug = "bnnvara",
             logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/BNNVARA_LOGO_ROOD_RGB_6a1abdf767.png",
             description = "Progressief, maatschappelijk betrokken en spraakmakend entertainment."
         ),
         BroadcasterItem(
-            id = "209288",
+            id = "209345",
             name = "VPRO",
             slug = "vpro",
             logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/VPRO_2017f2f8e7.jpg",
             description = "Eigenzinnige documentaires, cultuur en grensverleggende televisie."
         ),
         BroadcasterItem(
-            id = "236907",
+            id = "238098",
             name = "KRO-NCRV",
             slug = "kro-ncrv",
             logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/KRONCRV_2017f2f8e7.jpg",
             description = "Verbindend, maatschappelijk en verhalen met een ziel."
         ),
         BroadcasterItem(
-            id = "211933",
+            id = "223534",
             name = "NTR",
             slug = "ntr",
             logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/NTR_2017f2f8e7.jpg",
-            description = "Informatie, educatie, cultuur en jeugdtelevisie."
+            description = "Informatie, educatie, cultuur en iconische jeugdtelevisie."
         ),
         BroadcasterItem(
-            id = "209289",
-            name = "EO",
-            slug = "eo",
-            logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/EO_logo_liggend_a637cf870b.jpg",
-            description = "Evangelische Omroep: hoop, zingeving en menselijke verhalen."
-        ),
-        BroadcasterItem(
-            id = "209291",
+            id = "209293",
             name = "Omroep MAX",
             slug = "omroep-max",
             logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/MAX_2017f2f8e7.jpg",
             description = "Publieke omroep voor vijftigplussers: geschiedenis, cultuur en gezelligheid."
         ),
         BroadcasterItem(
-            id = "211935",
+            id = "209257",
             name = "HUMAN",
             slug = "human",
             logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/Human169_079b8c5ce5.jpg",
             description = "Humanistische omroep met filosofische en ethische programma's."
+        ),
+        BroadcasterItem(
+            id = "223533",
+            name = "WNL",
+            slug = "wnl",
+            logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/WNL_169_36efa28b22.jpg",
+            description = "Wij Nederland: opinie, politiek, economie en ochtendtelevisie."
+        ),
+        BroadcasterItem(
+            id = "223536",
+            name = "PowNed",
+            slug = "powned",
+            logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/POWNED_logo_liggend_c8821feec0.jpg",
+            description = "Publieke omroep met prikkelende journalistiek en spraakmakende items."
+        ),
+        BroadcasterItem(
+            id = "209287",
+            name = "NPO",
+            slug = "npo",
+            logoUrl = "https://schatkamer.beeldengeluid.nl/assets/cms/NPO_logo_liggend_22253ac321.jpg",
+            description = "Nederlandse Publieke Omroep: het overkoepelende publieke bestel."
         )
     )
 

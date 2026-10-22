@@ -4,11 +4,13 @@ import android.content.Context
 import android.util.Log
 import android.view.ContextThemeWrapper
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Airplay
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -17,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -28,14 +31,16 @@ import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
+import nl.beeldengeluid.schatkamer.core.cast.ProtocolType
 import nl.beeldengeluid.schatkamer.mobile.BuildConfig
 import nl.beeldengeluid.schatkamer.mobile.R
+import nl.beeldengeluid.schatkamer.mobile.cast.airplay.AirPlaySenderDialog
 import nl.beeldengeluid.schatkamer.mobile.playback.LocalPlaybackManager
 import nl.beeldengeluid.schatkamer.mobile.playback.PlaybackManager
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerCyan
 
 /**
- * Hulpfuncties voor Google Cast beschikbaarheid en de Cast-knop.
+ * Hulpfuncties voor Google Cast beschikbaarheid en de Cast-knoppen.
  */
 object CastAvailability {
 
@@ -89,22 +94,21 @@ object CastAvailability {
 }
 
 /**
- * De officiële MediaRouteButton voor Google Cast in Jetpack Compose.
- * Vereist dat de hosting Activity een AppCompatActivity / FragmentActivity is.
+ * De officiële, standaard MediaRouteButton voor Google Chromecast in Jetpack Compose.
  */
 @Composable
-fun GoogleCastMediaRouteButton(
+fun GoogleCastButton(
     modifier: Modifier = Modifier
 ) {
     AndroidView(
-        modifier = modifier.size(40.dp),
+        modifier = modifier.size(38.dp),
         factory = { ctx ->
             val themed = ContextThemeWrapper(ctx, R.style.Theme_SchatkamerMobile)
             MediaRouteButton(themed).apply {
                 runCatching {
                     CastButtonFactory.setUpMediaRouteButton(ctx.applicationContext, this)
                 }.onFailure { err ->
-                    Log.w("GoogleCastMediaRouteButton", "Kon MediaRouteButton niet koppelen aan Cast: ${err.message}")
+                    Log.w("GoogleCastButton", "Kon MediaRouteButton niet koppelen: ${err.message}")
                 }
             }
         }
@@ -112,47 +116,65 @@ fun GoogleCastMediaRouteButton(
 }
 
 /**
- * Universele Cast-knop die het 'Verbinden & Casten' paneel opent met ondersteuning
- * voor Apple AirPlay, Miracast / Draadloos Scherm en Google Cast.
+ * Toegewijde Apple AirPlay-knop die uitsluitend als zender fungeert.
+ * Opent een stabiele AirPlay dialoog waarin je een Apple TV, Mac of Smart TV selecteert.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UniversalCastButton(
+fun AirPlayButton(
     modifier: Modifier = Modifier,
     playbackManager: PlaybackManager = LocalPlaybackManager.current
 ) {
     val state by playbackManager.state.collectAsState()
-    var showSheet by remember { mutableStateOf(false) }
+    var showDialog by remember { mutableStateOf(false) }
+
+    val isAirPlayActive = state.isCasting && state.castProtocol == ProtocolType.AIRPLAY
 
     IconButton(
-        onClick = { showSheet = true },
-        modifier = modifier
+        onClick = { showDialog = true },
+        modifier = modifier.size(38.dp)
     ) {
-        val tint = if (state.isCasting) SchatkamerCyan else Color.White
-        val icon = if (state.isCasting) Icons.Default.CastConnected else Icons.Default.Cast
         Icon(
-            imageVector = icon,
-            contentDescription = "Verbinden & Casten (AirPlay, Miracast, Cast)",
-            tint = tint
+            imageVector = Icons.Default.Airplay,
+            contentDescription = "Apple AirPlay Zender",
+            tint = if (isAirPlayActive) SchatkamerCyan else Color.White,
+            modifier = Modifier.size(22.dp)
         )
     }
 
-    if (showSheet) {
-        UniversalCastSheet(
+    if (showDialog) {
+        AirPlaySenderDialog(
             playbackManager = playbackManager,
             playbackState = state,
-            onDismissRequest = { showSheet = false }
+            onDismissRequest = { showDialog = false }
         )
     }
 }
 
 /**
- * Compatibiliteitsalias: CastButton opent nu het complete 'Verbinden & Casten' paneel.
+ * Rij met zowel de standaard Chromecast-knop als de AirPlay-zenderknop.
+ */
+@Composable
+fun CastButtonRow(
+    modifier: Modifier = Modifier,
+    playbackManager: PlaybackManager = LocalPlaybackManager.current
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        GoogleCastButton()
+        AirPlayButton(playbackManager = playbackManager)
+    }
+}
+
+/**
+ * Compatibiliteitsalias: CastButton toont nu beide knoppen (Chromecast + AirPlay).
  */
 @Composable
 fun CastButton(
     modifier: Modifier = Modifier,
     playbackManager: PlaybackManager = LocalPlaybackManager.current
 ) {
-    UniversalCastButton(modifier = modifier, playbackManager = playbackManager)
+    CastButtonRow(modifier = modifier, playbackManager = playbackManager)
 }

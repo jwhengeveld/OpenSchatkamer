@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="40dp"
+    android:viewportWidth="120"
+    android:viewportHeight="40">
+    <!-- WNL Blue Typography on Transparent Background -->
+    <!-- W -->
+    <path
+        android:fillColor="#0072CE"
+        android:pathData="M 16,10 L 23,10 L 27,22 L 31,10 L 37,10 L 41,22 L 45,10 L 52,10 L 44,30 L 38,30 L 34,18 L 30,30 L 24,30 Z" />
+    <!-- N -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 54,10 L 61,10 L 74,24 L 74,10 L 80,10 L 80,30 L 73,30 L 60,16 L 60,30 L 54,30 Z" />
+    <!-- L -->
+    <path
+        android:fillColor="#0072CE"
+        android:pathData="M 83,10 L 89,10 L 89,25 L 104,25 L 104,30 L 83,30 Z" />
+</vector>

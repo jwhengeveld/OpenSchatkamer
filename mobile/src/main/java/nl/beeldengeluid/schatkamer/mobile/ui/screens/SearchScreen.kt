@@ -41,7 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerItem
-import nl.beeldengeluid.schatkamer.mobile.cast.CastButton
+import nl.beeldengeluid.schatkamer.mobile.cast.CastButtonRow
 import nl.beeldengeluid.schatkamer.mobile.ui.SearchUiState
 import nl.beeldengeluid.schatkamer.mobile.ui.SearchViewModel
 import nl.beeldengeluid.schatkamer.mobile.ui.components.ProgramCard
@@ -63,13 +63,13 @@ fun SearchScreen(
     val query by viewModel.query.collectAsState()
     val state by viewModel.uiState.collectAsState()
 
-    val suggestions = listOf("Journaal", "Cabaret", "Muziek", "Van Kooten en De Bie", "Kinderen voor Kinderen", "Swiebertje")
+    val suggestions = listOf("EO", "Polygoon", "Journaal", "Cabaret", "Van Kooten en De Bie", "Kinderen voor Kinderen")
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Zoeken in het archief", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
-                actions = { CastButton(modifier = Modifier.padding(end = 8.dp)) },
+                actions = { CastButtonRow(modifier = Modifier.padding(end = 6.dp)) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = SchatkamerDarkBackground)
             )
         },

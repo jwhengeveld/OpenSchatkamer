@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import nl.beeldengeluid.schatkamer.core.data.FavoritesRepository
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerItem
-import nl.beeldengeluid.schatkamer.mobile.cast.CastButton
+import nl.beeldengeluid.schatkamer.mobile.cast.CastButtonRow
 import nl.beeldengeluid.schatkamer.mobile.ui.components.ProgramCard
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerCyan
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerDarkBackground
@@ -55,7 +55,7 @@ fun FavoritesScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Mijn Lijst", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
-                actions = { CastButton(modifier = Modifier.padding(end = 8.dp)) },
+                actions = { CastButtonRow(modifier = Modifier.padding(end = 6.dp)) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = SchatkamerDarkBackground)
             )
         },

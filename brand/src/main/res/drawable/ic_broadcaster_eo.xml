@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="40dp"
+    android:viewportWidth="120"
+    android:viewportHeight="40">
+    <!-- EO: Evangelische Omroep - Transparent background with crisp EO branding -->
+    <!-- Letter E -->
+    <path
+        android:fillColor="#00A3E0"
+        android:pathData="M 24,8 L 48,8 L 48,14 L 32,14 L 32,17 L 44,17 L 44,23 L 32,23 L 32,26 L 48,26 L 48,32 L 24,32 Z" />
+    <!-- Letter O -->
+    <path
+        android:fillColor="#00A3E0"
+        android:pathData="M 64,8 C 55,8 50,13 50,20 C 50,27 55,32 64,32 C 73,32 78,27 78,20 C 78,13 73,8 64,8 Z M 64,14 C 68,14 70,16 70,20 C 70,24 68,26 64,26 C 60,26 58,24 58,20 C 58,16 60,14 64,14 Z" />
+    <!-- Subtitle dots / accent -->
+    <path
+        android:fillColor="#05C8F0"
+        android:pathData="M 86,18 A 3,3 0 1,1 86,22 A 3,3 0 1,1 86,18 Z" />
+</vector>

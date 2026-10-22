@@ -52,7 +52,10 @@ import coil.compose.AsyncImage
 import nl.beeldengeluid.schatkamer.core.data.BroadcasterItem
 import nl.beeldengeluid.schatkamer.core.data.GenreItem
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerItem
-import nl.beeldengeluid.schatkamer.mobile.cast.CastButton
+import nl.beeldengeluid.schatkamer.brand.BroadcasterLogos
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import nl.beeldengeluid.schatkamer.mobile.cast.CastButtonRow
 import nl.beeldengeluid.schatkamer.mobile.ui.DiscoverViewModel
 import nl.beeldengeluid.schatkamer.mobile.ui.components.ProgramCard
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerBorder
@@ -93,7 +96,7 @@ fun DiscoverScreen(
                         }
                     }
                 },
-                actions = { CastButton(modifier = Modifier.padding(end = 8.dp)) },
+                actions = { CastButtonRow(modifier = Modifier.padding(end = 6.dp)) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = SchatkamerDarkBackground)
             )
         },
@@ -205,24 +208,51 @@ private fun BroadcasterCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(SatkamerElevatedOrSurface())
-            .border(1.dp, SchatkamerBorder, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(SchatkamerDarkElevated)
+            .border(1.dp, SchatkamerBorder, RoundedCornerShape(14.dp))
             .clickable { onClick() }
             .padding(14.dp)
     ) {
-        if (broadcaster.logoUrl.isNotBlank()) {
-            AsyncImage(
-                model = broadcaster.logoUrl,
-                contentDescription = broadcaster.name,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Fit
-            )
-            Spacer(modifier = Modifier.height(10.dp))
+        val logoRes = BroadcasterLogos.getLogoRes(broadcaster.slug)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.White.copy(alpha = 0.05f))
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (logoRes != null) {
+                Image(
+                    painter = painterResource(id = logoRes),
+                    contentDescription = broadcaster.name,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp),
+                    contentScale = ContentScale.Fit
+                )
+            } else if (broadcaster.logoUrl.isNotBlank()) {
+                AsyncImage(
+                    model = broadcaster.logoUrl,
+                    contentDescription = broadcaster.name,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                Text(
+                    text = broadcaster.name,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black,
+                    color = SchatkamerCyan
+                )
+            }
         }
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         Text(
             text = broadcaster.name,

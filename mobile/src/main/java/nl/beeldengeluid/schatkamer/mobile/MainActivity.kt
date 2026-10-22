@@ -247,12 +247,13 @@ fun MainContent(
                     }
                 }
             },
-            containerColor = SchatkamerDarkBackground
+            containerColor = SchatkamerDarkBackground,
+            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
         ) { padding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(bottom = padding.calculateBottomPadding())
             ) {
                 when (selectedTab) {
                     0 -> HomeScreen(

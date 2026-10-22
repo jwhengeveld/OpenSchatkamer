@@ -103,7 +103,10 @@ fun ProgramCard(
             }
 
             // Omroep badge linksonder als beschikbaar
-            if (item.broadcaster.isNotBlank()) {
+            val broadcasterClean = item.broadcaster.takeIf { 
+                it.isNotBlank() && !it.equals("null", ignoreCase = true) && !it.equals("undefined", ignoreCase = true)
+            }
+            if (broadcasterClean != null) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -112,7 +115,7 @@ fun ProgramCard(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = item.broadcaster,
+                        text = broadcasterClean,
                         color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -185,9 +188,12 @@ fun HeroBanner(
                 .align(Alignment.BottomStart)
                 .padding(16.dp)
         ) {
-            if (item.broadcaster.isNotBlank()) {
+            val heroBroadcaster = item.broadcaster.takeIf { 
+                it.isNotBlank() && !it.equals("null", ignoreCase = true) && !it.equals("undefined", ignoreCase = true)
+            }
+            if (heroBroadcaster != null) {
                 Text(
-                    text = item.broadcaster.uppercase(),
+                    text = heroBroadcaster.uppercase(),
                     color = SchatkamerCyan,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,

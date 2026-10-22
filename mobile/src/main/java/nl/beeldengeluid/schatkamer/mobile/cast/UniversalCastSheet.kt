@@ -518,7 +518,7 @@ private fun GoogleCastSection() {
                 }
 
                 // Originele Cast-knop die het Google Cast dialoogvenster opent
-                GoogleCastMediaRouteButton()
+                GoogleCastButton()
             }
 
             Spacer(modifier = Modifier.height(10.dp))

@@ -24,38 +24,43 @@ Schatkamer/
   - `SchatkamerCyan` (`#05C8F0`)
   - `SchatkamerYellow` (`#FFE500`)
   - `SchatkamerDarkBackground` (`#111218`) & `SchatkamerDarkElevated` (`#1A1C24`)
-- **Vector Assets**:
+- **Vector Assets & Transparante Omroeplogo's**:
   - `schatkamer_logo.xml`: Officieel "De Schatkamer" woordmerk + logo
   - `schatkamer_mark.xml`: Embleem (cyaan cirkel met magenta sleutelgat)
   - `beeldengeluid_logo.xml`: Beeld & Geluid embleem
   - `schatkamer_tv_banner.xml`: 320x180 (16:9) Android TV Leanback launcher banner
+  - `ic_broadcaster_*`: Haarscherpe, transparante vectorlogo's voor alle publieke omroepen (EO, NOS, AVROTROS, BNNVARA, VPRO, KRO-NCRV, NTR, Omroep MAX, HUMAN, WNL, PowNed, NPO) zonder storende witte achtergronden.
   - `ic_launcher_*`: Adaptieve launcher iconen voor Android 8+ en monochrome iconen voor Android 13+ theming
 - **SchatkamerSplash**: Geanimeerd opstartscherm met pulserend sleutelgatlogo en merkovergang.
 
 ### 2. `:core`
-- **Next.js RSC Parser**:
-  - Haalt de rijke Next.js Server Components streaming payload (`self.__next_f.push`) op van de website.
-  - Parseert swimlanes (Trending, Recent toegevoegd, Uitgelicht), categorieën en zoekresultaten zonder afhankelijk te zijn van private JSON REST endpoints.
+- **Next.js RSC & SSR Parser**:
+  - Haalt de rijke Next.js Server Components streaming payload (`self.__next_f.push`) en server-side gerenderde HTML-kaarten op van de website.
+  - Parseert swimlanes (Trending, Recent toegevoegd, Uitgelicht), categorieën, omroep-pagina's (inclusief EO `id=209251`) en zoekresultaten zonder afhankelijk te zijn van private JSON REST endpoints.
+- **Slimme Stale-While-Revalidate Disk Cache**:
+  - `CatalogSnapshotStore`: Cacheert home-swimlanes en omroepcatalogi lokaal op de schijf.
+  - 0 ms opstarttijd: toont direct de meest recente catalogus bij het openen en valideert op de achtergrond geruisloos met de Schatkamer-servers.
 - **Media & DRM Ondersteuning**:
   - HLS streams (`master.m3u8`) met CloudFront Signed Cookies en session tokens.
   - Widevine DRM configuratie via EZDRM license proxy:
     `https://widevine-dash.ezdrm.com/widevine-php/widevine-foreignkey.php?pX=E24145`
 - **Repositories**:
-  - `SchatkamerCatalogRepository`: Home swimlanes, zoekmachine met suggesties, omroepselectie (NOS, AVROTROS, etc.) en thematische genres (Amusement, Fictie, Humor, Jeugd, Muziek, Informatief).
+  - `SchatkamerCatalogRepository`: Home swimlanes, zoekmachine met suggesties, omroepselectie (NOS, AVROTROS, EO, etc.) en thematische genres (Amusement, Fictie, Humor, Jeugd, Muziek, Informatief).
   - `SchatkamerVideoRepository`: Ophalen en valideren van afspeelbare video- en audiostream metadata.
   - `FavoritesRepository`: Lokale opslag van favorieten ("Mijn Lijst").
 
 ### 3. `:mobile` (Telefoon & Tablet)
-- **Universal Casting (AirPlay, Miracast, Schatkamer TV & Google Cast)**:
-  - **Geïntegreerd Cast & Verbindingsmenu**: Nieuw bottom sheet met één centrale knop in de navigatiebalk en videospeler.
-  - **Apple AirPlay**: Direct streamen naar Apple TV's, Mac's (AirPlay Receiver) en compatibele smart TV's via mDNS `_airplay._tcp` en HTTP transport.
-  - **Miracast / Draadloos Scherm (Smart View)**: Eén-klik koppeling naar de native Android Draadloos Scherm instellingen (`ACTION_CAST_SETTINGS`). Maakt gebruik van hardwarematige Widevine L1/L3 encryptie en Wi-Fi Direct mirroring voor gegarandeerde weergave op alle moderne televisies (Samsung, LG, Sony, Philips).
-  - **De Schatkamer Direct TV**: Automatische herkenning van Schatkamer TV ontvangers in het lokale netwerk via `_schatkamer._tcp`. Stuurt de programmacode en positie rechtstreeks door naar de TV app voor 100% native weergave met officiële licenties en afstandsbediening.
-  - **Google Cast (Chromecast)**: Integratie via Google Play Services Cast Framework (met receiver ID `377B8439` en fallback). Bevat duidelijke diagnostiek voor DRM/CloudFront stream-compatibiliteit.
+- **Native Zender Knoppen (Google Cast & Apple AirPlay)**:
+  - **Standaard Google Cast Knop**: Direct geïntegreerd in de topbalk en videospeler. Opent direct de native Android `MediaRouteChooserDialog` voor betrouwbare verbinding met Chromecast en Google Nest schermen.
+  - **Dedicated Apple AirPlay Zender Knop**: Opent een stabiel `AirPlaySenderDialog` met live mDNS discovery (`_airplay._tcp`), apparaatselectie, verbindingsstatus en afstandsbediening (play/pause/seek).
+- **Volledig Scherm & Native Redesign**:
+  - Statusbalk insets strak uitgelijnd zonder zwarte gaten of dubbele padding boven het logo.
+  - Volledige schermbenutting en scherpe typografie.
+  - Dynamische badges zonder "null"-waardes.
 - **Moderne UI (Jetpack Compose Material 3)**:
   - **Start**: Hero carousel met trending programma's en dynamische swimlanes.
   - **Zoeken**: Live zoekfunctie met zoekgeschiedenis, categorie-chips en resultatenweergave.
-  - **Ontdekken**: Bladeren op omroep (NOS, VPRO, etc.) en genre/thema.
+  - **Ontdekken**: Bladeren op omroep (met transparante logo's) en genre/thema.
   - **Mijn Lijst**: Snel overzicht van opgeslagen afleveringen en favorieten.
   - **Programmadetail**: Beschrijving, uitzenddatum, omroep, categorieën en directe afspeelknop.
 - **Afspeelfuncties**:
@@ -70,9 +75,6 @@ Schatkamer/
   - Volledige D-Pad afstandsbediening-navigatie met vloeiende focus-animaties (1.06x vergroting + cyan/magenta glow effect).
   - `TvNavigationRail` voor snelle navigatie tussen Start, Zoeken, Ontdekken en Mijn Lijst.
   - Leanback launcher compatibiliteit (`android.intent.category.LEANBACK_LAUNCHER`).
-- **Ingebouwde AirPlay & Schatkamer Receiver**:
-  - Draait een achtergrondserver (poort 7000) die adverteert via mDNS (`_airplay._tcp` en `_schatkamer._tcp`).
-  - Maakt het mogelijk om vanaf elke telefoon met één druk op de knop video's door te sturen naar de TV.
 - **TV Video Player**:
   - Aangepaste `schatkamer_player_view` en `schatkamer_player_controls` voor 10-foot schermen.
   - D-Pad transportbediening: OK (Play/Pause), Links/Rechts (10s achteruit/vooruit spoelen), Terugknop handling.

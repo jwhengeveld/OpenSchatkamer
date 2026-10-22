@@ -75,6 +75,35 @@ class CatalogSnapshotStore(context: Context) {
         }.getOrNull()
     }
 
+    fun writeBroadcaster(slug: String, result: SearchResult) {
+        runCatching {
+            val file = File(dir, "broadcaster_${slug.lowercase()}.json")
+            val root = JSONObject()
+            root.put("query", result.query)
+            root.put("total", result.total)
+            val itemsArr = JSONArray()
+            for (it in result.items) {
+                itemsArr.put(itemToJson(it))
+            }
+            root.put("items", itemsArr)
+            file.writeText(root.toString())
+        }
+    }
+
+    fun readBroadcaster(slug: String): SearchResult? {
+        val file = File(dir, "broadcaster_${slug.lowercase()}.json")
+        if (!file.exists()) return null
+        return runCatching {
+            val root = JSONObject(file.readText())
+            val itemsArr = root.optJSONArray("items") ?: return null
+            val items = mutableListOf<SchatkamerItem>()
+            for (i in 0 until itemsArr.length()) {
+                itemsArr.optJSONObject(i)?.let { jsonToItem(it)?.let { itm -> items.add(itm) } }
+            }
+            if (items.isNotEmpty()) SearchResult(query = root.optString("query", slug), total = items.size, items = items) else null
+        }.getOrNull()
+    }
+
     private fun itemToJson(item: SchatkamerItem): JSONObject = JSONObject().apply {
         put("id", item.id)
         put("title", item.title)
@@ -94,18 +123,20 @@ class CatalogSnapshotStore(context: Context) {
         val id = obj.optString("id")
         val title = obj.optString("title")
         if (id.isBlank() && title.isBlank()) return null
+        val b = obj.optString("broadcaster", "").trim()
+        val cleanBroadcaster = if (b.equals("null", ignoreCase = true) || b.equals("undefined", ignoreCase = true)) "" else b
         return SchatkamerItem(
             id = id,
             title = title,
-            subTitle = obj.optString("subTitle", ""),
-            description = obj.optString("description", ""),
-            date = obj.optString("date", ""),
+            subTitle = obj.optString("subTitle", "").let { if (it.equals("null", true)) "" else it },
+            description = obj.optString("description", "").let { if (it.equals("null", true)) "" else it },
+            date = obj.optString("date", "").let { if (it.equals("null", true)) "" else it },
             mediaType = obj.optString("mediaType", "video"),
-            broadcaster = obj.optString("broadcaster", ""),
+            broadcaster = cleanBroadcaster,
             imageUrl = obj.optString("imageUrl", ""),
             url = obj.optString("url", ""),
-            seriesId = obj.optString("seriesId").takeIf { it.isNotBlank() },
-            seriesSlug = obj.optString("seriesSlug").takeIf { it.isNotBlank() },
+            seriesId = obj.optString("seriesId").takeIf { it.isNotBlank() && !it.equals("null", true) },
+            seriesSlug = obj.optString("seriesSlug").takeIf { it.isNotBlank() && !it.equals("null", true) },
             isPlayable = obj.optBoolean("isPlayable", true)
         )
     }

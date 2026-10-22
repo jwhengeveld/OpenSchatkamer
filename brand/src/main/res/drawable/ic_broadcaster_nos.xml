@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="40dp"
+    android:viewportWidth="120"
+    android:viewportHeight="40">
+    <!-- NOS Red Rounded Badge with Transparent Background -->
+    <path
+        android:fillColor="#E30613"
+        android:pathData="M 22,6 L 98,6 C 104,6 108,10 108,16 L 108,24 C 108,30 104,34 98,34 L 22,34 C 16,34 12,30 12,24 L 12,16 C 12,10 16,6 22,6 Z" />
+    <!-- Letter N -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 26,12 L 32,12 L 44,24 L 44,12 L 49,12 L 49,28 L 43,28 L 31,16 L 31,28 L 26,28 Z" />
+    <!-- Letter O -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 64,11 C 58,11 54,15 54,20 C 54,25 58,29 64,29 C 70,29 74,25 74,20 C 74,15 70,11 64,11 Z M 64,15 C 67,15 69,17 69,20 C 69,23 67,25 64,25 C 61,25 59,23 59,20 C 59,17 61,15 64,15 Z" />
+    <!-- Letter S -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 92,15 C 90,13 87,12 84,12 C 80,12 77,14 77,17 C 77,22 93,19 93,25 C 93,29 88,30 84,30 C 80,30 76,28 75,25 L 79,23 C 80,25 82,26 84,26 C 86,26 88,25 88,24 C 88,20 72,22 72,16 C 72,13 76,11 83,11 C 87,11 90,12 92,14 Z" />
+</vector>

@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="40dp"
+    android:viewportWidth="120"
+    android:viewportHeight="40">
+    <!-- BNNVARA Bold Red Typography on Transparent Background -->
+    <!-- BNN -->
+    <path
+        android:fillColor="#E50027"
+        android:pathData="M 10,10 L 22,10 C 25,10 27,11 27,13 C 27,15 25,16 23,17 C 26,17 28,19 28,21 C 28,24 25,26 22,26 L 10,26 Z M 15,13 L 15,16 L 21,16 C 22,16 23,15 23,14 C 23,13 22,13 21,13 Z M 15,19 L 15,23 L 21,23 C 22,23 23,22 23,21 C 23,20 22,19 21,19 Z" />
+    <path
+        android:fillColor="#E50027"
+        android:pathData="M 31,10 L 36,10 L 44,21 L 44,10 L 48,10 L 48,26 L 43,26 L 35,15 L 35,26 L 31,26 Z" />
+    <path
+        android:fillColor="#E50027"
+        android:pathData="M 51,10 L 56,10 L 64,21 L 64,10 L 68,10 L 68,26 L 63,26 L 55,15 L 55,26 L 51,26 Z" />
+    <!-- VARA -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 72,10 L 76,10 L 80,22 L 84,10 L 88,10 L 82,26 L 78,26 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 89,26 L 93,10 L 98,10 L 102,26 L 98,26 L 97,22 L 94,22 L 93,26 Z M 95,19 L 97,19 L 96,14 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 104,10 L 112,10 C 115,10 117,12 117,14 C 117,16 115,18 113,18 L 117,26 L 112,26 L 109,19 L 108,19 L 108,26 L 104,26 Z M 108,13 L 108,16 L 111,16 C 112,16 113,15 113,14 C 113,13 112,13 111,13 Z" />
+</vector>
