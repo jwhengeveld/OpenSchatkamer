@@ -131,7 +131,7 @@ class SearchViewModel(
         searchJob = viewModelScope.launch {
             delay(300)
             _scrollResetTrigger.value = System.currentTimeMillis()
-            performSearch(newQuery, _currentFilter.value, offset = 0, append = false)
+            executeSearch(newQuery, _currentFilter.value, offset = 0, append = false)
         }
     }
 
@@ -141,7 +141,10 @@ class SearchViewModel(
         _scrollResetTrigger.value = System.currentTimeMillis()
         val q = _query.value.trim()
         if (q.isNotBlank()) {
-            performSearch(q, newFilter, offset = 0, append = false)
+            searchJob?.cancel()
+            searchJob = viewModelScope.launch {
+                executeSearch(q, newFilter, offset = 0, append = false)
+            }
         }
     }
 
@@ -154,13 +157,19 @@ class SearchViewModel(
         if (q.isBlank()) return
         _isRefreshing.value = true
         catalogRepo.invalidateCache()
-        performSearch(q, _currentFilter.value, offset = 0, append = false, isRefresh = true)
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            executeSearch(q, _currentFilter.value, offset = 0, append = false, isRefresh = true)
+        }
     }
 
     fun retry() {
         val q = _query.value.trim()
         if (q.isNotBlank()) {
-            performSearch(q, _currentFilter.value, offset = 0, append = false)
+            searchJob?.cancel()
+            searchJob = viewModelScope.launch {
+                executeSearch(q, _currentFilter.value, offset = 0, append = false)
+            }
         }
     }
 
@@ -174,10 +183,12 @@ class SearchViewModel(
         }
         isPagingRunning = true
         _isLoadingMore.value = true
-        performSearch(q, _currentFilter.value, offset = offset, append = true)
+        viewModelScope.launch {
+            executeSearch(q, _currentFilter.value, offset = offset, append = true)
+        }
     }
 
-    private fun performSearch(
+    private suspend fun executeSearch(
         queryToSearch: String,
         filter: SearchFilter,
         offset: Int,
@@ -185,41 +196,43 @@ class SearchViewModel(
         isRefresh: Boolean = false
     ) {
         val trimmed = queryToSearch.trim()
-        if (trimmed.isBlank()) return
-        if (!append) searchJob?.cancel()
-        val job = viewModelScope.launch {
-            if (!append && !isRefresh) _uiState.value = SearchUiState.Loading
-
-            val updated = filter.copy(query = trimmed)
-            catalogRepo.queryCatalog(updated, offset = offset, forceRefresh = isRefresh)
-                .onSuccess { result ->
-                    if (append) {
-                        _items.value = (_items.value + result.items).distinctBy { it.id }
-                    } else {
-                        _items.value = result.items
-                    }
-                    _totalCount.value = result.total
-                    _hasMore.value = result.hasMore
-                    if (result.availableGenres.isNotEmpty()) {
-                        _availableGenres.value = result.availableGenres
-                    }
-                    if (result.availableMaterials.isNotEmpty()) {
-                        _availableMaterials.value = result.availableMaterials
-                    }
-                    _uiState.value = SearchUiState.Success(
-                        result.copy(items = _items.value, total = result.total, hasMore = result.hasMore)
-                    )
-                }
-                .onFailure { error ->
-                    if (!append) {
-                        _uiState.value = SearchUiState.Error(error.localizedMessage ?: "Fout bij zoeken")
-                    }
-                }
+        if (trimmed.isBlank()) {
             _isLoadingMore.value = false
             _isRefreshing.value = false
             isPagingRunning = false
+            return
         }
-        if (!append) searchJob = job
+
+        if (!append && !isRefresh) _uiState.value = SearchUiState.Loading
+
+        val updated = filter.copy(query = trimmed)
+        catalogRepo.queryCatalog(updated, offset = offset, forceRefresh = isRefresh)
+            .onSuccess { result ->
+                if (append) {
+                    _items.value = (_items.value + result.items).distinctBy { it.id }
+                } else {
+                    _items.value = result.items
+                }
+                _totalCount.value = result.total
+                _hasMore.value = result.hasMore
+                if (result.availableGenres.isNotEmpty()) {
+                    _availableGenres.value = result.availableGenres
+                }
+                if (result.availableMaterials.isNotEmpty()) {
+                    _availableMaterials.value = result.availableMaterials
+                }
+                _uiState.value = SearchUiState.Success(
+                    result.copy(items = _items.value, total = result.total, hasMore = result.hasMore)
+                )
+            }
+            .onFailure { error ->
+                if (!append) {
+                    _uiState.value = SearchUiState.Error(error.localizedMessage ?: "Fout bij zoeken")
+                }
+            }
+        _isLoadingMore.value = false
+        _isRefreshing.value = false
+        isPagingRunning = false
     }
 }
 

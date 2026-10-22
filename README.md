@@ -55,6 +55,9 @@ Schatkamer/
 ### 3. `:mobile` (Telefoon & Tablet)
 - **Volledig Archief & Oneindig Scrollen (Infinite Scroll)**:
   - Naadloze paginering bij het omlaag scrollen: laadt automatisch de volgende batches van 24 programma's in real-time in zonder haperingen.
+- **Precieze Zoekmachine (BFF Search API Parameter Fix)**:
+  - Volledige afstemming op de Beeld & Geluid backend parameter `query` (en fallback `q`), waardoor specifieke zoektermen (zoals *tante gazeuse*, *jiskefet*, *polygoon*) direct de exacte archieftitels en afleveringen als eerste tonen in plaats van een ongefilterde archieflijst.
+  - Schone coroutine-aansturing in `SearchViewModel` zonder race conditions of zelfannulering.
 - **Uitgebreide Filters, Live Facet Tellers & Filter Bottom Sheet**:
   - **Filter ModalBottomSheet**: Volledig geavanceerd filter-paneel via de `[ Filters (N) ]` knop met realtime facet-aantallen, gesorteerd op mediumtype, tijdsperiode (decennia) en thematische genres.
   - **Live Facet Aantallen**: Realtime indicatoren rechtstreeks uit de Beeld & Geluid Elasticsearch/BFF backend (`religieus programma (10k+)`, `video (1.403)`, etc.) vóórdat een filter wordt geactiveerd.

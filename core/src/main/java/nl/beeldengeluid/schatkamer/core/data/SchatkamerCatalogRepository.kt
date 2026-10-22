@@ -102,7 +102,9 @@ class SchatkamerCatalogRepository(context: Context) {
             val queryParams = mutableListOf<String>()
 
             if (filter.query.isNotBlank()) {
-                queryParams.add("q=" + URLEncoder.encode(filter.query.trim(), "UTF-8"))
+                val encodedQuery = URLEncoder.encode(filter.query.trim(), "UTF-8")
+                queryParams.add("query=$encodedQuery")
+                queryParams.add("q=$encodedQuery")
             }
 
             val bNames = if (filter.broadcasterNames.isNotEmpty()) {
