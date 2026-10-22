@@ -153,10 +153,10 @@ class PlaybackManager(
         val active = activePlayer()
         val mediaItem = buildMediaItem(media)
 
-        active.stop()
-        active.clearMediaItems()
-
         if (active is ExoPlayer) {
+            active.stop()
+            active.clearMediaItems()
+
             val headers = mutableMapOf(
                 "User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36",
                 "Referer" to "https://schatkamer.beeldengeluid.nl/",
@@ -175,14 +175,20 @@ class PlaybackManager(
                 .createMediaSource(mediaItem)
 
             active.setMediaSource(mediaSource)
+            active.prepare()
+            if (media.resumePositionMs > 0) {
+                active.seekTo(media.resumePositionMs)
+            }
         } else {
-            active.setMediaItem(mediaItem)
+            // CastPlayer: laad media direct zonder concurrerende stop/clear-opdrachten
+            if (media.resumePositionMs > 0) {
+                active.setMediaItem(mediaItem, media.resumePositionMs)
+            } else {
+                active.setMediaItem(mediaItem)
+            }
+            active.prepare()
         }
 
-        active.prepare()
-        if (media.resumePositionMs > 0) {
-            active.seekTo(media.resumePositionMs)
-        }
         active.playWhenReady = true
         startPositionPolling()
         startPlaybackService()
