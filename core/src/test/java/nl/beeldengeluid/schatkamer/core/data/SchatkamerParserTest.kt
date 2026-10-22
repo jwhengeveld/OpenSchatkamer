@@ -140,7 +140,9 @@ class SchatkamerParserTest {
         assertEquals(1, result.items.size)
         assertTrue(result.hasMore)
         assertEquals("CHECKPOINT (2014-04-03)", result.items[0].title)
-        assertEquals(listOf("jeugdprogramma", "amusement"), result.availableGenres)
+        assertEquals(listOf("jeugdprogramma", "amusement"), result.genreLabels)
+        assertEquals(16000, result.availableGenres[0].count)
+        assertEquals("jeugdprogramma", result.availableGenres[0].label)
     }
 
     private fun SatkamerParserIsGeneric(t: String) = SchatkamerParser.isGenericOrEmptyTitle(t)

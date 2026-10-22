@@ -55,11 +55,14 @@ Schatkamer/
 ### 3. `:mobile` (Telefoon & Tablet)
 - **Volledig Archief & Oneindig Scrollen (Infinite Scroll)**:
   - Naadloze paginering bij het omlaag scrollen: laadt automatisch de volgende batches van 24 programma's in real-time in zonder haperingen.
-- **Uitgebreide Filters & Zoeken binnen Omroep**:
-  - **Sorteer**: Relevantie, Nieuwste eerst of Oudste eerst (gaat terug tot historische opnames uit 1956).
-  - **Type Medium**: Filter op Video of Radio/Audio (met duidelijke visuele indicators).
-  - **Periode / Decennia**: Filter op '50, '60, '70, '80, '90 of 2000+.
-  - **Genre**: Dynamische genre-facets rechtstreeks uit de Beeld & Geluid index.
+- **Uitgebreide Filters, Live Facet Tellers & Filter Bottom Sheet**:
+  - **Filter ModalBottomSheet**: Volledig geavanceerd filter-paneel via de `[ Filters (N) ]` knop met realtime facet-aantallen, gesorteerd op mediumtype, tijdsperiode (decennia) en thematische genres.
+  - **Live Facet Aantallen**: Realtime indicatoren rechtstreeks uit de Beeld & Geluid Elasticsearch/BFF backend (`religieus programma (10k+)`, `video (1.403)`, etc.) vóórdat een filter wordt geactiveerd.
+  - **Snelle Toggle Chips**: Direct op de horizontale filterbalk wisselen van sortering (`Relevantie`, `Nieuwste`, `Oudste`), decennium en één-taps `🎬 Video` en `📻 Audio` filters.
+  - **Pull-To-Refresh**: Native `PullToRefreshBox` op zowel Ontdekken als Zoeken voor directe verversing met automatische cache-invalidatie.
+  - **Sub-milliseconde L1 In-Memory Cache**: `ConcurrentHashMap` met 10-minuten TTL op alle zoek- en filtercombinaties voor bliksemsnelle navigatie zonder herhaalde netwerklatentie.
+  - **Scroll-to-Top Reset & Idempotente Paginering**: Automatische reset naar de top (`scrollToItem(0)`) bij het wisselen van filters/sortering/omroep en mutex-beveiligde paginering tegen dubbele aanvragen.
+  - **Robuuste Empty & Error States**: Duidelijke foutafhandeling met retry-knoppen en filter-reset wanneer er geen resultaten zijn.
   - **Contextueel Zoeken**: Zoek direct binnen een specifieke omroep via het geïntegreerde zoekveld ("Zoek binnen EO...").
   - **Aantal Badge**: Live teller van het aantal beschikbare programma's in het archief.
 - **Terugknop Navigatiestack (Back Handling)**:

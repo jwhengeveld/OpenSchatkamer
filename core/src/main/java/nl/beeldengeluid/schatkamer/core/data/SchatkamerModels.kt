@@ -91,14 +91,24 @@ data class GenreItem(
     val imageUrl: String = ""
 )
 
+data class FacetItem(
+    val label: String,
+    val count: Int = 0
+)
+
 data class SearchResult(
     val query: String,
     val total: Int,
     val items: List<SchatkamerItem> = emptyList(),
     val offset: Int = 0,
     val hasMore: Boolean = false,
-    val availableGenres: List<String> = emptyList()
-)
+    val availableGenres: List<FacetItem> = emptyList(),
+    val availableMaterials: List<FacetItem> = emptyList(),
+    val availableBroadcasters: List<FacetItem> = emptyList()
+) {
+    val genreLabels: List<String>
+        get() = availableGenres.map { it.label }
+}
 
 data class SearchFilter(
     val query: String = "",
@@ -136,4 +146,36 @@ data class SearchFilter(
 
     val hasActiveFilters: Boolean
         get() = !genre.isNullOrBlank() || !material.isNullOrBlank() || sort != "relevance" || !decade.isNullOrBlank() || yearMin != null || yearMax != null || playableOnly
+
+    val activeFilterCount: Int
+        get() {
+            var count = 0
+            if (!genre.isNullOrBlank()) count++
+            if (!material.isNullOrBlank()) count++
+            if (sort != "relevance") count++
+            if (!decade.isNullOrBlank() || yearMin != null || yearMax != null) count++
+            if (playableOnly) count++
+            return count
+        }
+
+    fun withToggledMaterial(type: String): SearchFilter {
+        return if (material == type) copy(material = null) else copy(material = type)
+    }
+
+    fun withNextSort(): SearchFilter {
+        val next = when (sort) {
+            "relevance" -> "date-newest"
+            "date-newest" -> "date-oldest"
+            else -> "relevance"
+        }
+        return copy(sort = next)
+    }
+
+    fun withoutFilters(): SearchFilter {
+        return SearchFilter(
+            query = query,
+            broadcasterSlug = broadcasterSlug,
+            broadcasterNames = broadcasterNames
+        )
+    }
 }

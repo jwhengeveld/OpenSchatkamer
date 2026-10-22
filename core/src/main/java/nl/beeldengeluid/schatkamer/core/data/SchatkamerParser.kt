@@ -789,7 +789,9 @@ object SchatkamerParser {
                 )
             }
 
-            val availableGenres = mutableListOf<String>()
+            val availableGenres = mutableListOf<FacetItem>()
+            val availableMaterials = mutableListOf<FacetItem>()
+            val availableBroadcasters = mutableListOf<FacetItem>()
             val facetsObj = dataObj.optJSONObject("facets")
             if (facetsObj != null) {
                 val genreArr = facetsObj.optJSONArray("genre")
@@ -797,7 +799,26 @@ object SchatkamerParser {
                     for (g in 0 until genreArr.length()) {
                         val gObj = genreArr.optJSONObject(g)
                         val lbl = gObj?.optString("label")?.trim().orEmpty()
-                        if (lbl.isNotBlank()) availableGenres.add(lbl)
+                        val count = gObj?.optInt("total", 0) ?: 0
+                        if (lbl.isNotBlank()) availableGenres.add(FacetItem(label = lbl, count = count))
+                    }
+                }
+                val materialArr = facetsObj.optJSONArray("material")
+                if (materialArr != null) {
+                    for (m in 0 until materialArr.length()) {
+                        val mObj = materialArr.optJSONObject(m)
+                        val lbl = mObj?.optString("label")?.trim().orEmpty()
+                        val count = mObj?.optInt("total", 0) ?: 0
+                        if (lbl.isNotBlank()) availableMaterials.add(FacetItem(label = lbl, count = count))
+                    }
+                }
+                val broadcasterArr = facetsObj.optJSONArray("broadcaster")
+                if (broadcasterArr != null) {
+                    for (b in 0 until broadcasterArr.length()) {
+                        val bObj = broadcasterArr.optJSONObject(b)
+                        val lbl = bObj?.optString("label")?.trim().orEmpty()
+                        val count = bObj?.optInt("total", 0) ?: 0
+                        if (lbl.isNotBlank()) availableBroadcasters.add(FacetItem(label = lbl, count = count))
                     }
                 }
             }
@@ -809,7 +830,9 @@ object SchatkamerParser {
                 items = items,
                 offset = currentOffset,
                 hasMore = hasMore,
-                availableGenres = availableGenres
+                availableGenres = availableGenres,
+                availableMaterials = availableMaterials,
+                availableBroadcasters = availableBroadcasters
             )
         }.getOrElse {
             SearchResult(

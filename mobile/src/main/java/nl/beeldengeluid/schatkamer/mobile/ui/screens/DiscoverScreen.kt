@@ -48,6 +48,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -89,11 +95,23 @@ fun DiscoverScreen(
     val selectedPrograms by viewModel.selectedItems.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
     val totalCount by viewModel.totalCount.collectAsState()
     val hasMore by viewModel.hasMore.collectAsState()
     val currentFilter by viewModel.currentFilter.collectAsState()
     val availableGenres by viewModel.availableGenres.collectAsState()
+    val availableMaterials by viewModel.availableMaterials.collectAsState()
     val selectedBroadcaster by viewModel.selectedBroadcaster.collectAsState()
+    val scrollResetTrigger by viewModel.scrollResetTrigger.collectAsState()
+
+    val gridState = rememberLazyGridState()
+
+    LaunchedEffect(scrollResetTrigger) {
+        if (selectedPrograms.isNotEmpty()) {
+            gridState.scrollToItem(0)
+        }
+    }
 
     BackHandler(enabled = selectedCategoryTitle != null) {
         selectedCategoryTitle = null
@@ -150,7 +168,12 @@ fun DiscoverScreen(
                     filter = currentFilter,
                     totalCount = totalCount,
                     availableGenres = availableGenres,
+                    availableMaterials = availableMaterials,
                     onFilterChange = { viewModel.updateFilter(it) },
+                    onResetFilters = {
+                        insideSearchQuery = ""
+                        viewModel.clearFilters()
+                    },
                     searchQuery = insideSearchQuery,
                     searchPlaceholder = "Zoek binnen ${selectedBroadcaster?.name ?: selectedCategoryTitle}...",
                     onSearchQueryChange = { q ->
@@ -159,57 +182,112 @@ fun DiscoverScreen(
                     }
                 )
 
-                // Programmaweergave voor geselecteerde categorie
-                if (isLoading) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = SchatkamerCyan)
-                    }
-                } else if (selectedPrograms.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Geen programma's gevonden voor deze selectie", color = SchatkamerTextSecondary)
-                    }
-                } else {
-                    val gridState = rememberLazyGridState()
-                    LaunchedEffect(gridState, selectedPrograms.size, hasMore, isLoadingMore) {
-                        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-                            .collect { lastIdx ->
-                                if (lastIdx != null && lastIdx >= selectedPrograms.size - 4 && hasMore && !isLoadingMore) {
-                                    viewModel.loadMore()
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = { viewModel.refresh() },
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    if (isLoading && selectedPrograms.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = SchatkamerCyan)
+                                Spacer(Modifier.height(12.dp))
+                                Text("Archief doorzoeken...", color = SchatkamerTextSecondary, fontSize = 13.sp)
+                            }
+                        }
+                    } else if (errorMessage != null && selectedPrograms.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.CloudOff, contentDescription = null, tint = SchatkamerMagenta, modifier = Modifier.size(48.dp))
+                                Spacer(Modifier.height(12.dp))
+                                Text("Kon programma's niet laden", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                Text(errorMessage ?: "Netwerkfout", color = SchatkamerTextSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
+                                Spacer(Modifier.height(16.dp))
+                                Button(
+                                    onClick = { viewModel.retry() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = SchatkamerCyan),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("Opnieuw proberen", color = SchatkamerDarkBackground, fontWeight = FontWeight.Bold)
                                 }
                             }
-                    }
-
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 160.dp),
-                        state = gridState,
-                        contentPadding = PaddingValues(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(selectedPrograms, key = { it.id }) { item ->
-                            ProgramCard(item = item, onClick = { onSelectItem(item) })
                         }
-                        if (isLoadingMore) {
-                            item(span = { GridItemSpan(maxLineSpan) }) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        CircularProgressIndicator(
-                                            color = SchatkamerCyan,
-                                            modifier = Modifier.size(20.dp),
-                                            strokeWidth = 2.dp
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            text = "Meer programma's laden...",
-                                            color = SchatkamerTextSecondary,
-                                            fontSize = 13.sp
-                                        )
+                    } else if (selectedPrograms.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.SearchOff, contentDescription = null, tint = SchatkamerCyan, modifier = Modifier.size(48.dp))
+                                Spacer(Modifier.height(12.dp))
+                                Text("Geen programma's gevonden", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                Text("Er zijn geen resultaten die voldoen aan je huidige filters.", color = SchatkamerTextSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
+                                if (currentFilter.hasActiveFilters || insideSearchQuery.isNotBlank()) {
+                                    Spacer(Modifier.height(16.dp))
+                                    Button(
+                                        onClick = {
+                                            insideSearchQuery = ""
+                                            viewModel.clearFilters()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = SchatkamerCyan),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Text("Filters wissen", color = SchatkamerDarkBackground, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        LaunchedEffect(gridState, selectedPrograms.size, hasMore, isLoadingMore) {
+                            snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                                .collect { lastIdx ->
+                                    if (lastIdx != null && lastIdx >= selectedPrograms.size - 6 && hasMore && !isLoadingMore) {
+                                        viewModel.loadMore()
+                                    }
+                                }
+                        }
+
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 160.dp),
+                            state = gridState,
+                            contentPadding = PaddingValues(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(selectedPrograms, key = { it.id }) { item ->
+                                ProgramCard(item = item, onClick = { onSelectItem(item) })
+                            }
+                            if (isLoadingMore) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(
+                                                color = SchatkamerCyan,
+                                                modifier = Modifier.size(20.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                text = "Meer programma's laden...",
+                                                color = SchatkamerTextSecondary,
+                                                fontSize = 13.sp
+                                            )
+                                        }
                                     }
                                 }
                             }

@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Repository voor het bladeren en doorzoeken van de Schatkamer-catalogus.
@@ -58,14 +59,45 @@ class SchatkamerCatalogRepository(context: Context) {
         else -> listOf(slug.uppercase().trim())
     }
 
+    private val catalogMemoryCache = ConcurrentHashMap<String, CachedSearchResult>()
+
+    private data class CachedSearchResult(
+        val result: SearchResult,
+        val timestamp: Long = System.currentTimeMillis()
+    ) {
+        val isExpired: Boolean get() = System.currentTimeMillis() - timestamp > 10 * 60 * 1000L // 10 min
+    }
+
+    fun invalidateCache(slug: String? = null) {
+        if (slug == null) {
+            catalogMemoryCache.clear()
+        } else {
+            val keyPart = "b=$slug"
+            val toRemove = catalogMemoryCache.keys.filter { it.contains(keyPart) }
+            for (k in toRemove) {
+                catalogMemoryCache.remove(k)
+            }
+        }
+    }
+
     /**
      * Zoeken en filteren in het archief via de officiële BFF API met paginering en filters.
      */
     suspend fun queryCatalog(
         filter: SearchFilter,
         offset: Int = 0,
-        limit: Int = 24
+        limit: Int = 24,
+        forceRefresh: Boolean = false
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
+        val cacheKey = "q=${filter.query}&b=${filter.broadcasterSlug}&names=${filter.broadcasterNames.joinToString(",")}&g=${filter.genre}&m=${filter.material}&s=${filter.sort}&d=${filter.decade}&ymin=${filter.effectiveYearMin}&ymax=${filter.effectiveYearMax}&p=${filter.playableOnly}&off=$offset&lim=$limit"
+
+        if (!forceRefresh) {
+            val cachedEntry = catalogMemoryCache[cacheKey]
+            if (cachedEntry != null && !cachedEntry.isExpired && cachedEntry.result.items.isNotEmpty()) {
+                return@withContext Result.success(cachedEntry.result)
+            }
+        }
+
         runCatching {
             val queryParams = mutableListOf<String>()
 
@@ -113,6 +145,9 @@ class SchatkamerCatalogRepository(context: Context) {
                 fallbackQuery = filter.query.ifBlank { filter.broadcasterSlug.orEmpty() },
                 currentOffset = offset
             )
+
+            // Cache in memory voor bliksemsnelle filterwissels
+            catalogMemoryCache[cacheKey] = CachedSearchResult(parsed)
 
             // Cache broadcaster eerste pagina
             if (offset == 0 && !filter.broadcasterSlug.isNullOrBlank() && !filter.hasActiveFilters && filter.query.isBlank() && parsed.items.isNotEmpty()) {
@@ -175,7 +210,7 @@ class SchatkamerCatalogRepository(context: Context) {
             }
         }
         val updated = filter.copy(broadcasterSlug = slug)
-        return queryCatalog(updated, offset = offset)
+        return queryCatalog(updated, offset = offset, forceRefresh = forceRefresh)
     }
 
     /**

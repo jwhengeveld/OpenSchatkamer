@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import nl.beeldengeluid.schatkamer.core.data.BroadcasterItem
+import nl.beeldengeluid.schatkamer.core.data.FacetItem
 import nl.beeldengeluid.schatkamer.core.data.FavoritesRepository
 import nl.beeldengeluid.schatkamer.core.data.GenreItem
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerCatalogRepository
@@ -97,10 +98,23 @@ class SearchViewModel(
     private val _isLoadingMore = MutableStateFlow(false)
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private val _availableGenres = MutableStateFlow<List<FacetItem>>(emptyList())
+    val availableGenres: StateFlow<List<FacetItem>> = _availableGenres.asStateFlow()
+
+    private val _availableMaterials = MutableStateFlow<List<FacetItem>>(emptyList())
+    val availableMaterials: StateFlow<List<FacetItem>> = _availableMaterials.asStateFlow()
+
+    private val _scrollResetTrigger = MutableStateFlow(0L)
+    val scrollResetTrigger: StateFlow<Long> = _scrollResetTrigger.asStateFlow()
+
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
     private var searchJob: Job? = null
+    private var isPagingRunning = false
 
     fun onQueryChanged(newQuery: String) {
         _query.value = newQuery
@@ -109,11 +123,14 @@ class SearchViewModel(
             _items.value = emptyList()
             _totalCount.value = 0
             _hasMore.value = false
+            _availableGenres.value = emptyList()
+            _availableMaterials.value = emptyList()
             _uiState.value = SearchUiState.Idle
             return
         }
         searchJob = viewModelScope.launch {
-            delay(350)
+            delay(300)
+            _scrollResetTrigger.value = System.currentTimeMillis()
             performSearch(newQuery, _currentFilter.value, offset = 0, append = false)
         }
     }
@@ -121,16 +138,41 @@ class SearchViewModel(
     fun updateFilter(transform: (SearchFilter) -> SearchFilter) {
         val newFilter = transform(_currentFilter.value)
         _currentFilter.value = newFilter
+        _scrollResetTrigger.value = System.currentTimeMillis()
         val q = _query.value.trim()
         if (q.isNotBlank()) {
             performSearch(q, newFilter, offset = 0, append = false)
         }
     }
 
+    fun clearFilters() {
+        updateFilter { it.withoutFilters() }
+    }
+
+    fun refresh() {
+        val q = _query.value.trim()
+        if (q.isBlank()) return
+        _isRefreshing.value = true
+        catalogRepo.invalidateCache()
+        performSearch(q, _currentFilter.value, offset = 0, append = false, isRefresh = true)
+    }
+
+    fun retry() {
+        val q = _query.value.trim()
+        if (q.isNotBlank()) {
+            performSearch(q, _currentFilter.value, offset = 0, append = false)
+        }
+    }
+
     fun loadMore() {
         val q = _query.value.trim()
-        if (q.isBlank() || _isLoadingMore.value || !_hasMore.value) return
+        if (q.isBlank() || _isLoadingMore.value || !_hasMore.value || isPagingRunning) return
         val offset = _items.value.size
+        if (offset == 0 || (_totalCount.value in 1..offset)) {
+            _hasMore.value = false
+            return
+        }
+        isPagingRunning = true
         _isLoadingMore.value = true
         performSearch(q, _currentFilter.value, offset = offset, append = true)
     }
@@ -139,16 +181,17 @@ class SearchViewModel(
         queryToSearch: String,
         filter: SearchFilter,
         offset: Int,
-        append: Boolean
+        append: Boolean,
+        isRefresh: Boolean = false
     ) {
         val trimmed = queryToSearch.trim()
         if (trimmed.isBlank()) return
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch {
-            if (!append) _uiState.value = SearchUiState.Loading
+        if (!append) searchJob?.cancel()
+        val job = viewModelScope.launch {
+            if (!append && !isRefresh) _uiState.value = SearchUiState.Loading
 
             val updated = filter.copy(query = trimmed)
-            catalogRepo.queryCatalog(updated, offset = offset)
+            catalogRepo.queryCatalog(updated, offset = offset, forceRefresh = isRefresh)
                 .onSuccess { result ->
                     if (append) {
                         _items.value = (_items.value + result.items).distinctBy { it.id }
@@ -157,6 +200,12 @@ class SearchViewModel(
                     }
                     _totalCount.value = result.total
                     _hasMore.value = result.hasMore
+                    if (result.availableGenres.isNotEmpty()) {
+                        _availableGenres.value = result.availableGenres
+                    }
+                    if (result.availableMaterials.isNotEmpty()) {
+                        _availableMaterials.value = result.availableMaterials
+                    }
                     _uiState.value = SearchUiState.Success(
                         result.copy(items = _items.value, total = result.total, hasMore = result.hasMore)
                     )
@@ -167,7 +216,10 @@ class SearchViewModel(
                     }
                 }
             _isLoadingMore.value = false
+            _isRefreshing.value = false
+            isPagingRunning = false
         }
+        if (!append) searchJob = job
     }
 }
 
@@ -199,18 +251,33 @@ class DiscoverViewModel(
     private val _isLoadingMore = MutableStateFlow(false)
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
     private val _currentFilter = MutableStateFlow(SearchFilter())
     val currentFilter: StateFlow<SearchFilter> = _currentFilter.asStateFlow()
 
-    private val _availableGenres = MutableStateFlow<List<String>>(emptyList())
-    val availableGenres: StateFlow<List<String>> = _availableGenres.asStateFlow()
+    private val _availableGenres = MutableStateFlow<List<FacetItem>>(emptyList())
+    val availableGenres: StateFlow<List<FacetItem>> = _availableGenres.asStateFlow()
+
+    private val _availableMaterials = MutableStateFlow<List<FacetItem>>(emptyList())
+    val availableMaterials: StateFlow<List<FacetItem>> = _availableMaterials.asStateFlow()
+
+    private val _scrollResetTrigger = MutableStateFlow(0L)
+    val scrollResetTrigger: StateFlow<Long> = _scrollResetTrigger.asStateFlow()
 
     private var loadJob: Job? = null
+    private var isPagingRunning = false
 
     fun selectBroadcaster(b: BroadcasterItem) {
         _selectedBroadcaster.value = b
         _selectedGenre.value = null
+        _errorMessage.value = null
         _currentFilter.value = SearchFilter(broadcasterSlug = b.slug)
+        _scrollResetTrigger.value = System.currentTimeMillis()
 
         // Snelle weergave uit snapshot cache
         val cached = catalogRepo.cachedBroadcaster(b.slug)
@@ -218,6 +285,8 @@ class DiscoverViewModel(
             _selectedItems.value = cached.items
             _totalCount.value = cached.total
             _hasMore.value = cached.hasMore
+            _availableGenres.value = cached.availableGenres
+            _availableMaterials.value = cached.availableMaterials
             _isLoading.value = false
         } else {
             _selectedItems.value = emptyList()
@@ -230,16 +299,21 @@ class DiscoverViewModel(
     fun selectGenre(g: GenreItem) {
         _selectedGenre.value = g
         _selectedBroadcaster.value = null
+        _errorMessage.value = null
         _currentFilter.value = SearchFilter(genre = g.slug)
+        _scrollResetTrigger.value = System.currentTimeMillis()
         _isLoading.value = true
 
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             catalogRepo.queryCatalog(_currentFilter.value, offset = 0)
                 .onSuccess { result ->
                     _selectedItems.value = result.items
                     _totalCount.value = result.total
                     _hasMore.value = result.hasMore
                     _availableGenres.value = result.availableGenres
+                    _availableMaterials.value = result.availableMaterials
+                    _errorMessage.value = null
                 }
                 .onFailure {
                     // Fallback naar klassieke genre weergave
@@ -248,9 +322,11 @@ class DiscoverViewModel(
                             _selectedItems.value = res.items
                             _totalCount.value = res.total
                             _hasMore.value = false
+                            _errorMessage.value = null
                         }
-                        .onFailure {
+                        .onFailure { err ->
                             _selectedItems.value = emptyList()
+                            _errorMessage.value = err.localizedMessage ?: "Kon genre niet laden"
                         }
                 }
             _isLoading.value = false
@@ -263,38 +339,94 @@ class DiscoverViewModel(
         _selectedItems.value = emptyList()
         _totalCount.value = 0
         _hasMore.value = false
+        _errorMessage.value = null
         _currentFilter.value = SearchFilter()
     }
 
     fun updateFilter(transform: (SearchFilter) -> SearchFilter) {
         val newFilter = transform(_currentFilter.value)
         _currentFilter.value = newFilter
+        _scrollResetTrigger.value = System.currentTimeMillis()
         val b = _selectedBroadcaster.value
         if (b != null) {
             _isLoading.value = true
             fetchBroadcasterPrograms(b, newFilter, offset = 0, append = false)
         } else if (_selectedGenre.value != null) {
             _isLoading.value = true
-            viewModelScope.launch {
+            loadJob?.cancel()
+            loadJob = viewModelScope.launch {
                 catalogRepo.queryCatalog(newFilter, offset = 0)
                     .onSuccess { result ->
                         _selectedItems.value = result.items
                         _totalCount.value = result.total
                         _hasMore.value = result.hasMore
+                        _errorMessage.value = null
+                    }
+                    .onFailure { err ->
+                        _errorMessage.value = err.localizedMessage ?: "Fout bij filteren"
                     }
                 _isLoading.value = false
             }
         }
     }
 
-    fun loadMore() {
-        if (_isLoading.value || _isLoadingMore.value || !_hasMore.value) return
+    fun clearFilters() {
+        updateFilter { it.withoutFilters() }
+    }
+
+    fun refresh() {
         val b = _selectedBroadcaster.value
+        val g = _selectedGenre.value
+        if (b != null) {
+            _isRefreshing.value = true
+            catalogRepo.invalidateCache(b.slug)
+            fetchBroadcasterPrograms(b, _currentFilter.value, offset = 0, append = false, isRefresh = true)
+        } else if (g != null) {
+            _isRefreshing.value = true
+            catalogRepo.invalidateCache()
+            loadJob?.cancel()
+            loadJob = viewModelScope.launch {
+                catalogRepo.queryCatalog(_currentFilter.value, offset = 0, forceRefresh = true)
+                    .onSuccess { result ->
+                        _selectedItems.value = result.items
+                        _totalCount.value = result.total
+                        _hasMore.value = result.hasMore
+                        _errorMessage.value = null
+                    }
+                    .onFailure { err ->
+                        _errorMessage.value = err.localizedMessage ?: "Fout bij verversen"
+                    }
+                _isRefreshing.value = false
+            }
+        }
+    }
+
+    fun retry() {
+        val b = _selectedBroadcaster.value
+        val g = _selectedGenre.value
+        if (b != null) {
+            _isLoading.value = true
+            _errorMessage.value = null
+            fetchBroadcasterPrograms(b, _currentFilter.value, offset = 0, append = false)
+        } else if (g != null) {
+            selectGenre(g)
+        }
+    }
+
+    fun loadMore() {
+        if (_isLoading.value || _isLoadingMore.value || !_hasMore.value || isPagingRunning) return
         val offset = _selectedItems.value.size
+        if (offset == 0 || (_totalCount.value in 1..offset)) {
+            _hasMore.value = false
+            return
+        }
+        val b = _selectedBroadcaster.value
+        val g = _selectedGenre.value
+        isPagingRunning = true
         _isLoadingMore.value = true
         if (b != null) {
             fetchBroadcasterPrograms(b, _currentFilter.value, offset = offset, append = true)
-        } else if (_selectedGenre.value != null) {
+        } else if (g != null) {
             viewModelScope.launch {
                 catalogRepo.queryCatalog(_currentFilter.value, offset = offset)
                     .onSuccess { result ->
@@ -303,9 +435,11 @@ class DiscoverViewModel(
                         _hasMore.value = result.hasMore
                     }
                 _isLoadingMore.value = false
+                isPagingRunning = false
             }
         } else {
             _isLoadingMore.value = false
+            isPagingRunning = false
         }
     }
 
@@ -313,15 +447,16 @@ class DiscoverViewModel(
         broadcaster: BroadcasterItem,
         filter: SearchFilter,
         offset: Int,
-        append: Boolean
+        append: Boolean,
+        isRefresh: Boolean = false
     ) {
-        loadJob?.cancel()
-        loadJob = viewModelScope.launch {
+        if (!append) loadJob?.cancel()
+        val job = viewModelScope.launch {
             if (offset == 0 && filter.query.isNotBlank()) {
                 delay(300)
             }
             val updated = filter.copy(broadcasterSlug = broadcaster.slug)
-            catalogRepo.queryCatalog(updated, offset = offset)
+            catalogRepo.queryCatalog(updated, offset = offset, forceRefresh = isRefresh)
                 .onSuccess { result ->
                     if (append) {
                         _selectedItems.value = (_selectedItems.value + result.items).distinctBy { it.id }
@@ -333,19 +468,29 @@ class DiscoverViewModel(
                     if (result.availableGenres.isNotEmpty()) {
                         _availableGenres.value = result.availableGenres
                     }
+                    if (result.availableMaterials.isNotEmpty()) {
+                        _availableMaterials.value = result.availableMaterials
+                    }
+                    _errorMessage.value = null
                 }
-                .onFailure {
+                .onFailure { error ->
                     if (!append && _selectedItems.value.isEmpty()) {
                         catalogRepo.search(broadcaster.slug).onSuccess { res ->
                             _selectedItems.value = res.items
                             _totalCount.value = res.total
                             _hasMore.value = false
+                            _errorMessage.value = null
+                        }.onFailure { err ->
+                            _errorMessage.value = err.localizedMessage ?: "Kon programma's niet laden"
                         }
                     }
                 }
             _isLoading.value = false
             _isLoadingMore.value = false
+            _isRefreshing.value = false
+            isPagingRunning = false
         }
+        if (!append) loadJob = job
     }
 }
 

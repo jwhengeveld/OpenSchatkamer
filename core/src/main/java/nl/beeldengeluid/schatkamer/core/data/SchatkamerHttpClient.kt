@@ -1,6 +1,8 @@
 package nl.beeldengeluid.schatkamer.core.data
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Cache
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -46,31 +48,29 @@ class SchatkamerHttpClient(context: Context) {
         }
         .build()
 
-    suspend fun getHtml(url: String): String {
+    suspend fun getHtml(url: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)
             .build()
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            val code = response.code
-            response.close()
-            throw IllegalStateException("HTTP request failed with code $code for $url")
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("HTTP request failed with code ${response.code} for $url")
+            }
+            response.body?.string().orEmpty()
         }
-        return response.body?.string().orEmpty()
     }
 
-    suspend fun getJson(url: String): String {
+    suspend fun getJson(url: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/json")
             .build()
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            val code = response.code
-            response.close()
-            throw IllegalStateException("HTTP JSON request failed with code $code for $url")
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("HTTP JSON request failed with code ${response.code} for $url")
+            }
+            response.body?.string().orEmpty()
         }
-        return response.body?.string().orEmpty()
     }
 
     suspend fun getDocument(url: String): Document {
