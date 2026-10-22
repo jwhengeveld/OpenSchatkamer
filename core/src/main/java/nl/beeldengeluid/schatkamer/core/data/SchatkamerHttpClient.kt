@@ -59,6 +59,20 @@ class SchatkamerHttpClient(context: Context) {
         return response.body?.string().orEmpty()
     }
 
+    suspend fun getJson(url: String): String {
+        val request = Request.Builder()
+            .url(url)
+            .header("Accept", "application/json")
+            .build()
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            val code = response.code
+            response.close()
+            throw IllegalStateException("HTTP JSON request failed with code $code for $url")
+        }
+        return response.body?.string().orEmpty()
+    }
+
     suspend fun getDocument(url: String): Document {
         val html = getHtml(url)
         return Jsoup.parse(html, url)

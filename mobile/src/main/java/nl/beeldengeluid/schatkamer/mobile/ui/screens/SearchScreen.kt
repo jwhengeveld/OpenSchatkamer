@@ -13,9 +13,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -33,8 +36,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,6 +50,7 @@ import nl.beeldengeluid.schatkamer.core.data.SchatkamerItem
 import nl.beeldengeluid.schatkamer.mobile.cast.CastButtonRow
 import nl.beeldengeluid.schatkamer.mobile.ui.SearchUiState
 import nl.beeldengeluid.schatkamer.mobile.ui.SearchViewModel
+import nl.beeldengeluid.schatkamer.mobile.ui.components.FilterBar
 import nl.beeldengeluid.schatkamer.mobile.ui.components.ProgramCard
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerBorder
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerCyan
@@ -63,6 +69,10 @@ fun SearchScreen(
 ) {
     val query by viewModel.query.collectAsState()
     val state by viewModel.uiState.collectAsState()
+    val currentFilter by viewModel.currentFilter.collectAsState()
+    val totalCount by viewModel.totalCount.collectAsState()
+    val hasMore by viewModel.hasMore.collectAsState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
 
     BackHandler(enabled = query.isNotBlank()) {
         viewModel.onQueryChanged("")
@@ -113,7 +123,17 @@ fun SearchScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Filter opties wanneer er een zoekopdracht actief is
+            if (query.isNotBlank()) {
+                FilterBar(
+                    filter = currentFilter,
+                    totalCount = totalCount,
+                    onFilterChange = { viewModel.updateFilter(it) },
+                    modifier = Modifier.padding(horizontal = 0.dp)
+                )
+            }
 
             // Suggesties als zoekbalk leeg is
             if (query.isBlank()) {
@@ -145,7 +165,7 @@ fun SearchScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             when (val s = state) {
                 is SearchUiState.Idle -> {
@@ -171,14 +191,19 @@ fun SearchScreen(
                             Text("Geen programma's gevonden voor \"${s.result.query}\".", color = SchatkamerTextSecondary)
                         }
                     } else {
-                        Text(
-                            text = "${s.result.items.size} programma's gevonden",
-                            color = SchatkamerTextMuted,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
+                        val gridState = rememberLazyGridState()
+                        LaunchedEffect(gridState, s.result.items.size, hasMore, isLoadingMore) {
+                            snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                                .collect { lastIdx ->
+                                    if (lastIdx != null && lastIdx >= s.result.items.size - 4 && hasMore && !isLoadingMore) {
+                                        viewModel.loadMore()
+                                    }
+                                }
+                        }
+
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(minSize = 160.dp),
+                            state = gridState,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(bottom = 32.dp),
@@ -189,6 +214,30 @@ fun SearchScreen(
                                     item = item,
                                     onClick = { onSelectItem(item) }
                                 )
+                            }
+                            if (isLoadingMore) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(
+                                                color = SchatkamerCyan,
+                                                modifier = Modifier.size(20.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                text = "Meer resultaten laden...",
+                                                color = SchatkamerTextSecondary,
+                                                fontSize = 13.sp
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

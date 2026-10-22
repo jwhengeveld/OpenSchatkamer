@@ -102,5 +102,46 @@ class SchatkamerParserTest {
         assertFalse(SatkamerParserIsGeneric(item.title))
     }
 
+    @Test
+    fun testParseBffSearch() {
+        val bffJson = """
+            {
+              "data": {
+                "total": 83087,
+                "results": [
+                  {
+                    "type": "program",
+                    "title": "",
+                    "slug": "checkpoint-proef",
+                    "externalId": "2101608150136110131",
+                    "mediaType": "video",
+                    "series": {
+                      "id": "2101608030024919731",
+                      "title": "CHECKPOINT",
+                      "slug": "checkpoint"
+                    },
+                    "date": "2014-04-03",
+                    "summary": "Stoere proeven met het testteam van Checkpoint.",
+                    "broadcaster": "EO",
+                    "isPlayable": true
+                  }
+                ],
+                "facets": {
+                  "genre": [
+                    { "total": 16000, "label": "jeugdprogramma" },
+                    { "total": 5000, "label": "amusement" }
+                  ]
+                }
+              }
+            }
+        """.trimIndent()
+        val result = SchatkamerParser.parseBffSearch(bffJson, "eo", currentOffset = 0)
+        assertEquals(83087, result.total)
+        assertEquals(1, result.items.size)
+        assertTrue(result.hasMore)
+        assertEquals("CHECKPOINT (2014-04-03)", result.items[0].title)
+        assertEquals(listOf("jeugdprogramma", "amusement"), result.availableGenres)
+    }
+
     private fun SatkamerParserIsGeneric(t: String) = SchatkamerParser.isGenericOrEmptyTitle(t)
 }

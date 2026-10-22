@@ -42,20 +42,115 @@ class SchatkamerCatalogRepository(context: Context) {
         }
     }
 
+    fun getBroadcasterApiNames(slug: String): List<String> = when (slug.lowercase().trim()) {
+        "eo" -> listOf("EO")
+        "nos" -> listOf("NOS")
+        "avrotros" -> listOf("AVROTROS", "AVRO", "TROS")
+        "bnnvara" -> listOf("BNNVARA", "BNN", "VARA")
+        "vpro" -> listOf("VPRO")
+        "kro-ncrv" -> listOf("KRO-NCRV", "KRO", "NCRV")
+        "ntr" -> listOf("NTR")
+        "max" -> listOf("OMROEP MAX", "MAX")
+        "human" -> listOf("HUMAN")
+        "wnl" -> listOf("WNL")
+        "powned" -> listOf("POWNED")
+        "npo" -> listOf("NPO")
+        else -> listOf(slug.uppercase().trim())
+    }
+
     /**
-     * Zoeken in het complete archief via /zoeken?q=...
+     * Zoeken en filteren in het archief via de officiële BFF API met paginering en filters.
      */
-    suspend fun search(query: String): Result<SearchResult> = withContext(Dispatchers.IO) {
+    suspend fun queryCatalog(
+        filter: SearchFilter,
+        offset: Int = 0,
+        limit: Int = 24
+    ): Result<SearchResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val trimmed = query.trim()
-            if (trimmed.isBlank()) {
-                return@runCatching SearchResult(query = "", total = 0, items = emptyList())
+            val queryParams = mutableListOf<String>()
+
+            if (filter.query.isNotBlank()) {
+                queryParams.add("q=" + URLEncoder.encode(filter.query.trim(), "UTF-8"))
             }
-            val encoded = URLEncoder.encode(trimmed, "UTF-8")
-            val url = "${SchatkamerHttpClient.BASE_URL}/zoeken?q=$encoded"
-            val html = httpClient.getHtml(url)
-            SchatkamerParser.parseSearch(html, trimmed)
+
+            val bNames = if (filter.broadcasterNames.isNotEmpty()) {
+                filter.broadcasterNames
+            } else if (!filter.broadcasterSlug.isNullOrBlank()) {
+                getBroadcasterApiNames(filter.broadcasterSlug)
+            } else emptyList()
+
+            for (b in bNames) {
+                queryParams.add("broadcaster[]=" + URLEncoder.encode(b, "UTF-8"))
+            }
+
+            if (!filter.genre.isNullOrBlank()) {
+                queryParams.add("genre[]=" + URLEncoder.encode(filter.genre.trim(), "UTF-8"))
+            }
+
+            if (!filter.material.isNullOrBlank()) {
+                queryParams.add("material[]=" + URLEncoder.encode(filter.material.trim(), "UTF-8"))
+            }
+
+            if (filter.sort.isNotBlank()) {
+                queryParams.add("sort=" + URLEncoder.encode(filter.sort.trim(), "UTF-8"))
+            }
+
+            filter.effectiveYearMin?.let { queryParams.add("yearmin=$it") }
+            filter.effectiveYearMax?.let { queryParams.add("yearmax=$it") }
+
+            if (filter.playableOnly) {
+                queryParams.add("playable=true")
+            }
+
+            queryParams.add("offset=$offset")
+            queryParams.add("limit=$limit")
+
+            val queryString = queryParams.joinToString("&")
+            val bffUrl = "${SchatkamerHttpClient.BASE_URL}/api/media/bff/search?$queryString"
+            val json = httpClient.getJson(bffUrl)
+            val parsed = SchatkamerParser.parseBffSearch(
+                jsonString = json,
+                fallbackQuery = filter.query.ifBlank { filter.broadcasterSlug.orEmpty() },
+                currentOffset = offset
+            )
+
+            // Cache broadcaster eerste pagina
+            if (offset == 0 && !filter.broadcasterSlug.isNullOrBlank() && !filter.hasActiveFilters && filter.query.isBlank() && parsed.items.isNotEmpty()) {
+                snapshotStore.writeBroadcaster(filter.broadcasterSlug, parsed)
+            }
+
+            parsed
+        }.recoverCatching { error ->
+            // Fallback naar cache als offset == 0
+            if (!filter.broadcasterSlug.isNullOrBlank() && offset == 0) {
+                val cached = snapshotStore.readBroadcaster(filter.broadcasterSlug)
+                if (cached != null) return@recoverCatching cached
+            }
+            // Fallback naar HTML/SSR search
+            if (offset == 0 && filter.query.isNotBlank()) {
+                return@recoverCatching searchLegacy(filter.query).getOrThrow()
+            }
+            throw error
         }
+    }
+
+    private suspend fun searchLegacy(query: String): Result<SearchResult> = runCatching {
+        val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+        val url = "${SchatkamerHttpClient.BASE_URL}/zoeken?q=$encoded"
+        val html = httpClient.getHtml(url)
+        SchatkamerParser.parseSearch(html, query)
+    }
+
+    /**
+     * Zoeken in het complete archief via de BFF API (met optionele filters en paginering).
+     */
+    suspend fun search(
+        query: String,
+        offset: Int = 0,
+        filter: SearchFilter = SearchFilter(query = query)
+    ): Result<SearchResult> {
+        val updated = filter.copy(query = query)
+        return queryCatalog(updated, offset = offset)
     }
 
     /**
@@ -64,40 +159,23 @@ class SchatkamerCatalogRepository(context: Context) {
     fun cachedBroadcaster(slug: String): SearchResult? = snapshotStore.readBroadcaster(slug)
 
     /**
-     * Programma's van een specifieke publieke omroep met slimme Stale-While-Revalidate caching.
+     * Programma's van een specifieke publieke omroep met paginering, filters en Stale-While-Revalidate caching.
      */
     suspend fun getProgramsForBroadcaster(
         id: String,
         slug: String,
-        forceRefresh: Boolean = false
-    ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        val cached = snapshotStore.readBroadcaster(slug)
-        if (!forceRefresh && cached != null && cached.items.isNotEmpty()) {
-            return@withContext Result.success(cached)
-        }
-
-        runCatching {
-            val url = "${SchatkamerHttpClient.BASE_URL}/omroep/$id/$slug"
-            val html = httpClient.getHtml(url)
-            val parsed = SchatkamerParser.parseSearch(html, slug)
-            if (parsed.items.isNotEmpty()) {
-                snapshotStore.writeBroadcaster(slug, parsed)
-                parsed
-            } else if (cached != null) {
-                cached
-            } else {
-                // Betrouwbare fallback: zoek direct op de omroepcode
-                val fallback = search(slug).getOrNull()
-                if (fallback != null && fallback.items.isNotEmpty()) {
-                    snapshotStore.writeBroadcaster(slug, fallback)
-                    fallback
-                } else {
-                    parsed
-                }
+        forceRefresh: Boolean = false,
+        offset: Int = 0,
+        filter: SearchFilter = SearchFilter(broadcasterSlug = slug)
+    ): Result<SearchResult> {
+        if (!forceRefresh && offset == 0 && !filter.hasActiveFilters && filter.query.isBlank()) {
+            val cached = snapshotStore.readBroadcaster(slug)
+            if (cached != null && cached.items.isNotEmpty()) {
+                return Result.success(cached)
             }
-        }.recoverCatching { error ->
-            cached ?: search(slug).getOrThrow()
         }
+        val updated = filter.copy(broadcasterSlug = slug)
+        return queryCatalog(updated, offset = offset)
     }
 
     /**

@@ -94,5 +94,46 @@ data class GenreItem(
 data class SearchResult(
     val query: String,
     val total: Int,
-    val items: List<SchatkamerItem> = emptyList()
+    val items: List<SchatkamerItem> = emptyList(),
+    val offset: Int = 0,
+    val hasMore: Boolean = false,
+    val availableGenres: List<String> = emptyList()
 )
+
+data class SearchFilter(
+    val query: String = "",
+    val broadcasterSlug: String? = null,
+    val broadcasterNames: List<String> = emptyList(),
+    val genre: String? = null,
+    val material: String? = null, // "video", "audio", of null (alles)
+    val sort: String = "relevance", // "relevance", "date-newest", "date-oldest"
+    val decade: String? = null, // "1950s", "1960s", "1970s", "1980s", "1990s", "2000s"
+    val yearMin: Int? = null,
+    val yearMax: Int? = null,
+    val playableOnly: Boolean = false
+) {
+    val effectiveYearMin: Int?
+        get() = yearMin ?: when (decade) {
+            "1950s" -> 1950
+            "1960s" -> 1960
+            "1970s" -> 1970
+            "1980s" -> 1980
+            "1990s" -> 1990
+            "2000s" -> 2000
+            else -> null
+        }
+
+    val effectiveYearMax: Int?
+        get() = yearMax ?: when (decade) {
+            "1950s" -> 1959
+            "1960s" -> 1969
+            "1970s" -> 1979
+            "1980s" -> 1989
+            "1990s" -> 1999
+            "2000s" -> 2026
+            else -> null
+        }
+
+    val hasActiveFilters: Boolean
+        get() = !genre.isNullOrBlank() || !material.isNullOrBlank() || sort != "relevance" || !decade.isNullOrBlank() || yearMin != null || yearMax != null || playableOnly
+}

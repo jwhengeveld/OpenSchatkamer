@@ -17,6 +17,7 @@ import nl.beeldengeluid.schatkamer.core.data.SchatkamerHome
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerItem
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerProgramDetail
 import nl.beeldengeluid.schatkamer.core.data.SchatkamerVideoRepository
+import nl.beeldengeluid.schatkamer.core.data.SearchFilter
 import nl.beeldengeluid.schatkamer.core.data.SearchResult
 
 sealed interface HomeUiState {
@@ -81,6 +82,21 @@ class SearchViewModel(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    private val _currentFilter = MutableStateFlow(SearchFilter())
+    val currentFilter: StateFlow<SearchFilter> = _currentFilter.asStateFlow()
+
+    private val _items = MutableStateFlow<List<SchatkamerItem>>(emptyList())
+    val items: StateFlow<List<SchatkamerItem>> = _items.asStateFlow()
+
+    private val _totalCount = MutableStateFlow(0)
+    val totalCount: StateFlow<Int> = _totalCount.asStateFlow()
+
+    private val _hasMore = MutableStateFlow(false)
+    val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
+
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
+
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
@@ -90,47 +106,67 @@ class SearchViewModel(
         _query.value = newQuery
         searchJob?.cancel()
         if (newQuery.isBlank()) {
+            _items.value = emptyList()
+            _totalCount.value = 0
+            _hasMore.value = false
             _uiState.value = SearchUiState.Idle
             return
         }
         searchJob = viewModelScope.launch {
-            delay(300) // Snelle responsieve debounce
-            performSearch(newQuery)
+            delay(350)
+            performSearch(newQuery, _currentFilter.value, offset = 0, append = false)
         }
     }
 
-    fun performSearch(queryToSearch: String) {
+    fun updateFilter(transform: (SearchFilter) -> SearchFilter) {
+        val newFilter = transform(_currentFilter.value)
+        _currentFilter.value = newFilter
+        val q = _query.value.trim()
+        if (q.isNotBlank()) {
+            performSearch(q, newFilter, offset = 0, append = false)
+        }
+    }
+
+    fun loadMore() {
+        val q = _query.value.trim()
+        if (q.isBlank() || _isLoadingMore.value || !_hasMore.value) return
+        val offset = _items.value.size
+        _isLoadingMore.value = true
+        performSearch(q, _currentFilter.value, offset = offset, append = true)
+    }
+
+    private fun performSearch(
+        queryToSearch: String,
+        filter: SearchFilter,
+        offset: Int,
+        append: Boolean
+    ) {
         val trimmed = queryToSearch.trim()
         if (trimmed.isBlank()) return
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            _uiState.value = SearchUiState.Loading
+            if (!append) _uiState.value = SearchUiState.Loading
 
-            // Controleer of de zoekterm direct matcht met een omroep (zoals "EO", "NOS", "VPRO")
-            val broadcasterMatch = catalogRepo.getBroadcasters().firstOrNull {
-                it.slug.equals(trimmed, ignoreCase = true) ||
-                it.name.equals(trimmed, ignoreCase = true)
-            }
-            if (broadcasterMatch != null) {
-                val broadcasterResult = catalogRepo.getProgramsForBroadcaster(
-                    broadcasterMatch.id,
-                    broadcasterMatch.slug
-                ).getOrNull()
-
-                if (broadcasterResult != null && broadcasterResult.items.isNotEmpty()) {
-                    _uiState.value = SearchUiState.Success(broadcasterResult)
-                    return@launch
-                }
-            }
-
-            // Algemene archief zoekopdracht
-            catalogRepo.search(trimmed)
+            val updated = filter.copy(query = trimmed)
+            catalogRepo.queryCatalog(updated, offset = offset)
                 .onSuccess { result ->
-                    _uiState.value = SearchUiState.Success(result)
+                    if (append) {
+                        _items.value = (_items.value + result.items).distinctBy { it.id }
+                    } else {
+                        _items.value = result.items
+                    }
+                    _totalCount.value = result.total
+                    _hasMore.value = result.hasMore
+                    _uiState.value = SearchUiState.Success(
+                        result.copy(items = _items.value, total = result.total, hasMore = result.hasMore)
+                    )
                 }
                 .onFailure { error ->
-                    _uiState.value = SearchUiState.Error(error.localizedMessage ?: "Fout bij zoeken")
+                    if (!append) {
+                        _uiState.value = SearchUiState.Error(error.localizedMessage ?: "Fout bij zoeken")
+                    }
                 }
+            _isLoadingMore.value = false
         }
     }
 }
@@ -142,45 +178,173 @@ class DiscoverViewModel(
     val broadcasters: List<BroadcasterItem> = catalogRepo.getBroadcasters()
     val genres: List<GenreItem> = catalogRepo.getGenres()
 
+    private val _selectedBroadcaster = MutableStateFlow<BroadcasterItem?>(null)
+    val selectedBroadcaster: StateFlow<BroadcasterItem?> = _selectedBroadcaster.asStateFlow()
+
+    private val _selectedGenre = MutableStateFlow<GenreItem?>(null)
+    val selectedGenre: StateFlow<GenreItem?> = _selectedGenre.asStateFlow()
+
     private val _selectedItems = MutableStateFlow<List<SchatkamerItem>>(emptyList())
     val selectedItems: StateFlow<List<SchatkamerItem>> = _selectedItems.asStateFlow()
+
+    private val _totalCount = MutableStateFlow(0)
+    val totalCount: StateFlow<Int> = _totalCount.asStateFlow()
+
+    private val _hasMore = MutableStateFlow(false)
+    val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    fun selectBroadcaster(b: BroadcasterItem) {
-        viewModelScope.launch {
-            // Directe weergave uit cache indien aanwezig
-            val cached = catalogRepo.cachedBroadcaster(b.slug)
-            if (cached != null && cached.items.isNotEmpty()) {
-                _selectedItems.value = cached.items
-                _isLoading.value = false
-            } else {
-                _isLoading.value = true
-            }
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
 
-            catalogRepo.getProgramsForBroadcaster(b.id, b.slug)
+    private val _currentFilter = MutableStateFlow(SearchFilter())
+    val currentFilter: StateFlow<SearchFilter> = _currentFilter.asStateFlow()
+
+    private val _availableGenres = MutableStateFlow<List<String>>(emptyList())
+    val availableGenres: StateFlow<List<String>> = _availableGenres.asStateFlow()
+
+    private var loadJob: Job? = null
+
+    fun selectBroadcaster(b: BroadcasterItem) {
+        _selectedBroadcaster.value = b
+        _selectedGenre.value = null
+        _currentFilter.value = SearchFilter(broadcasterSlug = b.slug)
+
+        // Snelle weergave uit snapshot cache
+        val cached = catalogRepo.cachedBroadcaster(b.slug)
+        if (cached != null && cached.items.isNotEmpty()) {
+            _selectedItems.value = cached.items
+            _totalCount.value = cached.total
+            _hasMore.value = cached.hasMore
+            _isLoading.value = false
+        } else {
+            _selectedItems.value = emptyList()
+            _isLoading.value = true
+        }
+
+        fetchBroadcasterPrograms(b, _currentFilter.value, offset = 0, append = false)
+    }
+
+    fun selectGenre(g: GenreItem) {
+        _selectedGenre.value = g
+        _selectedBroadcaster.value = null
+        _currentFilter.value = SearchFilter(genre = g.slug)
+        _isLoading.value = true
+
+        viewModelScope.launch {
+            catalogRepo.queryCatalog(_currentFilter.value, offset = 0)
                 .onSuccess { result ->
                     _selectedItems.value = result.items
+                    _totalCount.value = result.total
+                    _hasMore.value = result.hasMore
+                    _availableGenres.value = result.availableGenres
                 }
                 .onFailure {
-                    if (_selectedItems.value.isEmpty()) {
-                        catalogRepo.search(b.slug).onSuccess { res ->
+                    // Fallback naar klassieke genre weergave
+                    catalogRepo.getProgramsForGenre(g.slug)
+                        .onSuccess { res ->
                             _selectedItems.value = res.items
+                            _totalCount.value = res.total
+                            _hasMore.value = false
                         }
-                    }
+                        .onFailure {
+                            _selectedItems.value = emptyList()
+                        }
                 }
             _isLoading.value = false
         }
     }
 
-    fun selectGenre(g: GenreItem) {
-        viewModelScope.launch {
+    fun clearSelection() {
+        _selectedBroadcaster.value = null
+        _selectedGenre.value = null
+        _selectedItems.value = emptyList()
+        _totalCount.value = 0
+        _hasMore.value = false
+        _currentFilter.value = SearchFilter()
+    }
+
+    fun updateFilter(transform: (SearchFilter) -> SearchFilter) {
+        val newFilter = transform(_currentFilter.value)
+        _currentFilter.value = newFilter
+        val b = _selectedBroadcaster.value
+        if (b != null) {
             _isLoading.value = true
-            catalogRepo.getProgramsForGenre(g.slug)
-                .onSuccess { _selectedItems.value = it.items }
-                .onFailure { _selectedItems.value = emptyList() }
+            fetchBroadcasterPrograms(b, newFilter, offset = 0, append = false)
+        } else if (_selectedGenre.value != null) {
+            _isLoading.value = true
+            viewModelScope.launch {
+                catalogRepo.queryCatalog(newFilter, offset = 0)
+                    .onSuccess { result ->
+                        _selectedItems.value = result.items
+                        _totalCount.value = result.total
+                        _hasMore.value = result.hasMore
+                    }
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun loadMore() {
+        if (_isLoading.value || _isLoadingMore.value || !_hasMore.value) return
+        val b = _selectedBroadcaster.value
+        val offset = _selectedItems.value.size
+        _isLoadingMore.value = true
+        if (b != null) {
+            fetchBroadcasterPrograms(b, _currentFilter.value, offset = offset, append = true)
+        } else if (_selectedGenre.value != null) {
+            viewModelScope.launch {
+                catalogRepo.queryCatalog(_currentFilter.value, offset = offset)
+                    .onSuccess { result ->
+                        _selectedItems.value = (_selectedItems.value + result.items).distinctBy { it.id }
+                        _totalCount.value = result.total
+                        _hasMore.value = result.hasMore
+                    }
+                _isLoadingMore.value = false
+            }
+        } else {
+            _isLoadingMore.value = false
+        }
+    }
+
+    private fun fetchBroadcasterPrograms(
+        broadcaster: BroadcasterItem,
+        filter: SearchFilter,
+        offset: Int,
+        append: Boolean
+    ) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            if (offset == 0 && filter.query.isNotBlank()) {
+                delay(300)
+            }
+            val updated = filter.copy(broadcasterSlug = broadcaster.slug)
+            catalogRepo.queryCatalog(updated, offset = offset)
+                .onSuccess { result ->
+                    if (append) {
+                        _selectedItems.value = (_selectedItems.value + result.items).distinctBy { it.id }
+                    } else {
+                        _selectedItems.value = result.items
+                    }
+                    _totalCount.value = result.total
+                    _hasMore.value = result.hasMore
+                    if (result.availableGenres.isNotEmpty()) {
+                        _availableGenres.value = result.availableGenres
+                    }
+                }
+                .onFailure {
+                    if (!append && _selectedItems.value.isEmpty()) {
+                        catalogRepo.search(broadcaster.slug).onSuccess { res ->
+                            _selectedItems.value = res.items
+                            _totalCount.value = res.total
+                            _hasMore.value = false
+                        }
+                    }
+                }
             _isLoading.value = false
+            _isLoadingMore.value = false
         }
     }
 }

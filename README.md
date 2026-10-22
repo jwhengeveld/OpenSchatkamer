@@ -34,9 +34,12 @@ Schatkamer/
 - **SchatkamerSplash**: Geanimeerd opstartscherm met pulserend sleutelgatlogo en merkovergang.
 
 ### 2. `:core`
-- **Next.js RSC & SSR Parser**:
-  - Haalt de rijke Next.js Server Components streaming payload (`self.__next_f.push`) en server-side gerenderde HTML-kaarten op van de website.
-  - Parseert swimlanes (Trending, Recent toegevoegd, Uitgelicht), categorieën, omroep-pagina's (inclusief EO `id=209251`) en zoekresultaten zonder afhankelijk te zijn van private JSON REST endpoints.
+- **Beeld & Geluid BFF Search API & RSC Parser**:
+  - Directe integratie met de `https://schatkamer.beeldengeluid.nl/api/media/bff/search` backend API voor volledige archieftoegang.
+  - Ontgrendelt het volledige publieke omroeparchief (10.000+ programma's per omroep en honderdduizenden in totaal) met dynamische paginering (`offset` + `limit`).
+  - Ondersteunt multi-omroep queries voor fusieomroepen (bijv. AVROTROS vraagt automatisch ook het archief van AVRO en TROS op; BNNVARA vraagt BNN en VARA op; KRO-NCRV vraagt KRO en NCRV op).
+  - Rijke facetfilters voor decennia, jaartallen, mediumtype (video/audio) en genres.
+  - Parseert tevens Next.js Server Components streaming payload (`self.__next_f.push`) en server-side gerenderde HTML-kaarten als fallback en voor redactionele swimlanes.
 - **Slimme Stale-While-Revalidate Disk Cache**:
   - `CatalogSnapshotStore`: Cacheert home-swimlanes en omroepcatalogi lokaal op de schijf.
   - 0 ms opstarttijd: toont direct de meest recente catalogus bij het openen en valideert op de achtergrond geruisloos met de Schatkamer-servers.
@@ -50,6 +53,15 @@ Schatkamer/
   - `FavoritesRepository`: Lokale opslag van favorieten ("Mijn Lijst").
 
 ### 3. `:mobile` (Telefoon & Tablet)
+- **Volledig Archief & Oneindig Scrollen (Infinite Scroll)**:
+  - Naadloze paginering bij het omlaag scrollen: laadt automatisch de volgende batches van 24 programma's in real-time in zonder haperingen.
+- **Uitgebreide Filters & Zoeken binnen Omroep**:
+  - **Sorteer**: Relevantie, Nieuwste eerst of Oudste eerst (gaat terug tot historische opnames uit 1956).
+  - **Type Medium**: Filter op Video of Radio/Audio (met duidelijke visuele indicators).
+  - **Periode / Decennia**: Filter op '50, '60, '70, '80, '90 of 2000+.
+  - **Genre**: Dynamische genre-facets rechtstreeks uit de Beeld & Geluid index.
+  - **Contextueel Zoeken**: Zoek direct binnen een specifieke omroep via het geïntegreerde zoekveld ("Zoek binnen EO...").
+  - **Aantal Badge**: Live teller van het aantal beschikbare programma's in het archief.
 - **Terugknop Navigatiestack (Back Handling)**:
   - Volledige hiërarchische terug-navigatie: Speler sluiten -> Programmadetail sluiten -> Categorie/Zoekopdracht resetten -> Terugkeren naar Start-tab -> Pas bij startscherm app afsluiten. Voorkomt dat de app onverwacht afsluit bij het indrukken van de terugknop of bij het uitvoeren van het terug-veeggebaar.
 - **Slimme Titels & Geen "Geen afleveringstitel" Meer**:

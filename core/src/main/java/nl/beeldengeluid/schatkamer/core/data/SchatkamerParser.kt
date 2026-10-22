@@ -713,4 +713,112 @@ object SchatkamerParser {
         val t = s?.trim().orEmpty()
         return if (t.equals("null", ignoreCase = true) || t.equals("undefined", ignoreCase = true)) "" else t
     }
+
+    /**
+     * Parset zoek- en omroepresultaten direct uit de officiële BFF API (/api/media/bff/search).
+     */
+    fun parseBffSearch(
+        jsonString: String,
+        fallbackQuery: String,
+        currentOffset: Int = 0
+    ): SearchResult {
+        return runCatching {
+            val root = JSONObject(jsonString)
+            val dataObj = root.optJSONObject("data") ?: root
+            val total = dataObj.optInt("total", 0)
+            val resultsArr = dataObj.optJSONArray("results") ?: JSONArray()
+            val items = mutableListOf<SchatkamerItem>()
+
+            for (i in 0 until resultsArr.length()) {
+                val obj = resultsArr.optJSONObject(i) ?: continue
+                val extId = cleanStr(obj.optString("externalId").ifBlank { obj.optString("id") })
+                val rawTitle = cleanStr(obj.optString("title"))
+                val summary = cleanStr(obj.optString("summary"))
+                val date = cleanStr(obj.optString("date"))
+                val mediaType = cleanStr(obj.optString("mediaType", "video")).ifBlank { "video" }
+                val broadcaster = cleanStr(obj.optString("broadcaster"))
+                val isPlayable = obj.optBoolean("isPlayable", true)
+                val slug = cleanStr(obj.optString("slug"))
+
+                var seriesTitle = ""
+                var seriesId: String? = null
+                var seriesSlug: String? = null
+                val seriesObj = obj.optJSONObject("series")
+                if (seriesObj != null) {
+                    seriesTitle = cleanStr(seriesObj.optString("title"))
+                    seriesId = cleanStr(seriesObj.optString("id")).takeIf { it.isNotBlank() }
+                    seriesSlug = cleanStr(seriesObj.optString("slug")).takeIf { it.isNotBlank() }
+                }
+
+                var imageUrl = ""
+                val imgObj = obj.optJSONObject("image")
+                if (imgObj != null) {
+                    imageUrl = cleanStr(imgObj.optString("url"))
+                }
+
+                val url = if (slug.isNotBlank()) {
+                    "https://schatkamer.beeldengeluid.nl/programma/$extId/$slug"
+                } else {
+                    "https://schatkamer.beeldengeluid.nl/programma/$extId"
+                }
+
+                val displayTitle = buildSmartTitle(
+                    rawTitle = rawTitle,
+                    subTitle = seriesTitle,
+                    seriesTitle = seriesTitle,
+                    date = date,
+                    description = summary,
+                    broadcaster = broadcaster
+                )
+
+                items.add(
+                    SchatkamerItem(
+                        id = extId,
+                        title = displayTitle,
+                        subTitle = seriesTitle.ifBlank { broadcaster.ifBlank { date } },
+                        description = summary,
+                        date = date,
+                        mediaType = mediaType,
+                        broadcaster = broadcaster,
+                        imageUrl = imageUrl,
+                        url = url,
+                        seriesId = seriesId,
+                        seriesSlug = seriesSlug,
+                        isPlayable = isPlayable
+                    )
+                )
+            }
+
+            val availableGenres = mutableListOf<String>()
+            val facetsObj = dataObj.optJSONObject("facets")
+            if (facetsObj != null) {
+                val genreArr = facetsObj.optJSONArray("genre")
+                if (genreArr != null) {
+                    for (g in 0 until genreArr.length()) {
+                        val gObj = genreArr.optJSONObject(g)
+                        val lbl = gObj?.optString("label")?.trim().orEmpty()
+                        if (lbl.isNotBlank()) availableGenres.add(lbl)
+                    }
+                }
+            }
+
+            val hasMore = currentOffset + items.size < total
+            SearchResult(
+                query = fallbackQuery,
+                total = total,
+                items = items,
+                offset = currentOffset,
+                hasMore = hasMore,
+                availableGenres = availableGenres
+            )
+        }.getOrElse {
+            SearchResult(
+                query = fallbackQuery,
+                total = 0,
+                items = emptyList(),
+                offset = currentOffset,
+                hasMore = false
+            )
+        }
+    }
 }

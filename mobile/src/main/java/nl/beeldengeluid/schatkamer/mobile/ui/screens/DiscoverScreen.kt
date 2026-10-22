@@ -15,9 +15,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -34,12 +38,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +64,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import nl.beeldengeluid.schatkamer.mobile.cast.CastButtonRow
 import nl.beeldengeluid.schatkamer.mobile.ui.DiscoverViewModel
+import nl.beeldengeluid.schatkamer.mobile.ui.components.FilterBar
 import nl.beeldengeluid.schatkamer.mobile.ui.components.ProgramCard
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerBorder
 import nl.beeldengeluid.schatkamer.mobile.ui.theme.SchatkamerCyan
@@ -77,26 +84,50 @@ fun DiscoverScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedCategoryTitle by remember { mutableStateOf<String?>(null) }
+    var insideSearchQuery by remember { mutableStateOf("") }
+
     val selectedPrograms by viewModel.selectedItems.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val totalCount by viewModel.totalCount.collectAsState()
+    val hasMore by viewModel.hasMore.collectAsState()
+    val currentFilter by viewModel.currentFilter.collectAsState()
+    val availableGenres by viewModel.availableGenres.collectAsState()
+    val selectedBroadcaster by viewModel.selectedBroadcaster.collectAsState()
 
     BackHandler(enabled = selectedCategoryTitle != null) {
         selectedCategoryTitle = null
+        insideSearchQuery = ""
+        viewModel.clearSelection()
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = selectedCategoryTitle ?: "Ontdekken",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = selectedCategoryTitle ?: "Ontdekken",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (selectedCategoryTitle != null && totalCount > 0) {
+                            val formattedCount = if (totalCount >= 10000) "10.000+" else java.text.NumberFormat.getNumberInstance(java.util.Locale.GERMAN).format(totalCount)
+                            Text(
+                                text = "$formattedCount programma's in archief",
+                                fontSize = 11.sp,
+                                color = SchatkamerTextMuted
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     if (selectedCategoryTitle != null) {
-                        IconButton(onClick = { selectedCategoryTitle = null }) {
+                        IconButton(onClick = {
+                            selectedCategoryTitle = null
+                            insideSearchQuery = ""
+                            viewModel.clearSelection()
+                        }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Terug", tint = Color.White)
                         }
                     }
@@ -114,6 +145,20 @@ fun DiscoverScreen(
                 .padding(padding)
         ) {
             if (selectedCategoryTitle != null) {
+                // Filter balk met sorteer, type medium, decennium, genres en zoekbalk binnen omroep
+                FilterBar(
+                    filter = currentFilter,
+                    totalCount = totalCount,
+                    availableGenres = availableGenres,
+                    onFilterChange = { viewModel.updateFilter(it) },
+                    searchQuery = insideSearchQuery,
+                    searchPlaceholder = "Zoek binnen ${selectedBroadcaster?.name ?: selectedCategoryTitle}...",
+                    onSearchQueryChange = { q ->
+                        insideSearchQuery = q
+                        viewModel.updateFilter { it.copy(query = q) }
+                    }
+                )
+
                 // Programmaweergave voor geselecteerde categorie
                 if (isLoading) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -121,11 +166,22 @@ fun DiscoverScreen(
                     }
                 } else if (selectedPrograms.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Geen programma's gevonden", color = SchatkamerTextSecondary)
+                        Text("Geen programma's gevonden voor deze selectie", color = SchatkamerTextSecondary)
                     }
                 } else {
+                    val gridState = rememberLazyGridState()
+                    LaunchedEffect(gridState, selectedPrograms.size, hasMore, isLoadingMore) {
+                        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                            .collect { lastIdx ->
+                                if (lastIdx != null && lastIdx >= selectedPrograms.size - 4 && hasMore && !isLoadingMore) {
+                                    viewModel.loadMore()
+                                }
+                            }
+                    }
+
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 160.dp),
+                        state = gridState,
                         contentPadding = PaddingValues(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -133,6 +189,30 @@ fun DiscoverScreen(
                     ) {
                         items(selectedPrograms, key = { it.id }) { item ->
                             ProgramCard(item = item, onClick = { onSelectItem(item) })
+                        }
+                        if (isLoadingMore) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            color = SchatkamerCyan,
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = "Meer programma's laden...",
+                                            color = SchatkamerTextSecondary,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
