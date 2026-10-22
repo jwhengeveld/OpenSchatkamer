@@ -218,10 +218,10 @@ private fun BroadcasterCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .height(64.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color.White.copy(alpha = 0.05f))
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center
         ) {
             if (logoRes != null) {
@@ -230,7 +230,7 @@ private fun BroadcasterCard(
                     contentDescription = broadcaster.name,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(38.dp),
+                        .height(46.dp),
                     contentScale = ContentScale.Fit
                 )
             } else if (broadcaster.logoUrl.isNotBlank()) {
@@ -239,7 +239,7 @@ private fun BroadcasterCard(
                     contentDescription = broadcaster.name,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(38.dp),
+                        .height(46.dp),
                     contentScale = ContentScale.Fit
                 )
             } else {

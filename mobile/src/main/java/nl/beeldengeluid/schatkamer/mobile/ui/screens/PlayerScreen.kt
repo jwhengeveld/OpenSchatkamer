@@ -110,7 +110,7 @@ fun PlayerScreen(
     var seekFeedbackText by remember { mutableStateOf<String?>(null) }
     var seekFeedbackSide by remember { mutableIntStateOf(0) } // -1 links, 1 rechts
 
-    // Automatisch herstellen naar default oriëntatie bij verlaten van de speler
+    // Automatisch herstellen naar systeeminstellingen bij verlaten van de speler
     DisposableEffect(Unit) {
         onDispose {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -365,7 +365,7 @@ fun PlayerScreen(
                             activity?.requestedOrientation = if (isLandscape) {
                                 ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                             } else {
-                                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                             }
                         }
                     ) {
@@ -469,7 +469,7 @@ fun PlayerScreen(
                                     activity?.requestedOrientation = if (isLandscape) {
                                         ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                                     } else {
-                                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                                     }
                                 },
                                 modifier = Modifier.size(32.dp)

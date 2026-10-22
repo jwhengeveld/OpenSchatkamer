@@ -29,7 +29,7 @@ Schatkamer/
   - `schatkamer_mark.xml`: Embleem (cyaan cirkel met magenta sleutelgat)
   - `beeldengeluid_logo.xml`: Beeld & Geluid embleem
   - `schatkamer_tv_banner.xml`: 320x180 (16:9) Android TV Leanback launcher banner
-  - `ic_broadcaster_*`: Haarscherpe, transparante vectorlogo's voor alle publieke omroepen (EO, NOS, AVROTROS, BNNVARA, VPRO, KRO-NCRV, NTR, Omroep MAX, HUMAN, WNL, PowNed, NPO) zonder storende witte achtergronden.
+  - `ic_broadcaster_*`: 100% officiële, authentieke transparante omroeplogo's voor alle publieke omroepen (EO, NOS, AVROTROS, BNNVARA, VPRO, KRO-NCRV, NTR, Omroep MAX, HUMAN, WNL, PowNed, NPO) met perfecte donker-thema optimalisatie.
   - `ic_launcher_*`: Adaptieve launcher iconen voor Android 8+ en monochrome iconen voor Android 13+ theming
 - **SchatkamerSplash**: Geanimeerd opstartscherm met pulserend sleutelgatlogo en merkovergang.
 
