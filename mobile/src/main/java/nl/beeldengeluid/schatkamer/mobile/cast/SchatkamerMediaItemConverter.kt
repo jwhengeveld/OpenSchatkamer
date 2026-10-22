@@ -3,7 +3,6 @@ package nl.beeldengeluid.schatkamer.mobile.cast
 import android.net.Uri
 import androidx.media3.cast.MediaItemConverter
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaMetadata
 import com.google.android.gms.cast.MediaQueueItem
@@ -13,15 +12,17 @@ import org.json.JSONObject
 
 /**
  * Zet MediaItem om naar Google Cast MediaQueueItem voor de officiële Schatkamer Chromecast Receiver (377B8439).
- * Ondersteunt THEOplayer receiver framework met EZDRM Widevine & PlayReady content protection.
+ * Ondersteunt het THEOplayer receiver framework met EZDRM Widevine & PlayReady content protection.
  */
 class SchatkamerMediaItemConverter : MediaItemConverter {
 
     companion object {
-        const val THEOPLAYER_LIBRARY_LOCATION = "https://cdn.myth.theoplayer.com/6035a502-5393-44ab-ad99-860715846af6/"
-        const val THEOPLAYER_LICENSE = "sZP7IYe6T6fk0le_IufrTmzz3KCtFSxKTuC-TSIgIOzLTDXgIS3l0LCc0Kh6FOPlUY3zWokgbgjNIOf9flPKIDao0K0oFDCr3oh-3u5tTOz_TSXgFD3g3uB_Iuhi3LRi3ZfVfK4_bQgZCYxNWoryIQXzImf90SRz0uRt3uai0u5i0Oi6Io4pIYP1UQgqWgjeCYxgflEc3LRk0laiTuRr0La_FOPeWok1dDrLYtA1Ioh6TgV6v6fVfKxqWQPrFK3qWmfVfKcqCo"
+        const val THEOPLAYER_LIBRARY_LOCATION = "https://cdn.myth.theoplayer.com/fb21074d-a7cd-4fef-9206-e490101d6570/"
+        const val THEOPLAYER_LICENSE = "sZP7IYe6T6fk0le_IufrTmzz3KCtFSxKTuC-TSIgIOzLTDXgIS3l0LCc0Kh6FOPlUY3zWokgbgjNIOf9flPKIDao0K0oFDCr3oh-3u5tTOz_TSXgFD3g3uB_Iuhi3LRi3ZfVfK4_bQgZCYxNWoryIQXzImf90SRz0uRt3uai0u5i0Oi6Io4pIYP1UQgqWgjeCYxgflEc3LRk0laiTuRr0La_FOPeWok1dDrLYtA1Ioh6TgV6v6fVfKxqWQPrFK3qWmfVfKcqCoXVdQjLUOfVfG3pID49sY3iCYPZWtbpCoj-f6i6UQ1gWZrVdYIgf6i6UQ1gWtAVCYggb6rlWoz6Ymi6IQj-CDgpbkjLWt4ZCoh6TgV6v6fVfKxqWQPrFK3qWmfVfKcqCoXVdQjLUOfVfG3pID49sY3iCYPZWtbpCoj-f6i6UQ1gWZrVdYIgf6i6UQ1gWtAVCYggb6rlWoz6Ymi6box7bZf9DZPEUQkV3mPUFOPLIDreYog-bwPgbt3NWo_6TGxZUDhVfKIgCYxkbK4LflNWYYz"
         const val WIDEVINE_LICENSE_URL = "https://widevine-dash.ezdrm.com/widevine-php/widevine-foreignkey.php?pX=E24145"
         const val PLAYREADY_LICENSE_URL = "https://playready.ezdrm.com/cency/preauth.aspx?pX=164FB4"
+        const val FAIRPLAY_LICENSE_URL = "https://fps.ezdrm.com/api/licenses/auth?px=C7BD8D"
+        const val FAIRPLAY_CERTIFICATE_URL = "https://player.cdn.beeldengeluid.nl/drm/fairplay.cer"
     }
 
     override fun toMediaQueueItem(mediaItem: MediaItem): MediaQueueItem {
@@ -42,6 +43,10 @@ class SchatkamerMediaItemConverter : MediaItemConverter {
             })
             put("playready", JSONObject().apply {
                 put("licenseAcquisitionURL", PLAYREADY_LICENSE_URL)
+            })
+            put("fairplay", JSONObject().apply {
+                put("licenseAcquisitionURL", FAIRPLAY_LICENSE_URL)
+                put("certificateURL", FAIRPLAY_CERTIFICATE_URL)
             })
         }
 
@@ -71,14 +76,19 @@ class SchatkamerMediaItemConverter : MediaItemConverter {
             textTracksArray.put(trackObj)
         }
 
-        // 4. SourceDescription object voor BENG.CastReceiver
+        // 4. SourceDescription object voor BENG.CastReceiver (exact zoals web client)
         val sourceDescription = JSONObject().apply {
             put("sources", sourcesArray)
             if (textTracksArray.length() > 0) {
                 put("textTracks", textTracksArray)
             }
-            put("clip", JSONObject().apply {
-                put("startTime", 0)
+            metadata.artworkUri?.let {
+                put("poster", it.toString())
+            }
+            put("network", JSONObject().apply {
+                put("cors", JSONObject().apply {
+                    put("credentials", "include")
+                })
             })
         }
 
@@ -98,6 +108,7 @@ class SchatkamerMediaItemConverter : MediaItemConverter {
         }
 
         val mediaInfo = MediaInfo.Builder(uri.toString())
+            .setContentUrl(uri.toString())
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
             .setContentType("application/x-mpegurl")
             .setMetadata(castMetadata)
@@ -117,7 +128,7 @@ class SchatkamerMediaItemConverter : MediaItemConverter {
         val imageUri = metadata?.images?.firstOrNull()?.url
 
         return MediaItem.Builder()
-            .setUri(info.contentId)
+            .setUri(info.contentUrl ?: info.contentId)
             .setMediaMetadata(
                 androidx.media3.common.MediaMetadata.Builder()
                     .setTitle(title)

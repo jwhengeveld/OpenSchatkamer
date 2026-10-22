@@ -20,9 +20,13 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
+import com.google.android.gms.cast.Cast
+import com.google.android.gms.cast.MediaSeekOptions
+import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
+import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -53,6 +57,8 @@ data class PlaybackState(
     val isCasting: Boolean = false,
     val castDeviceName: String? = null,
     val castProtocol: ProtocolType? = null,
+    val castVolume: Float = 0.5f,
+    val castMuted: Boolean = false,
     val currentPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val error: String? = null
@@ -74,6 +80,7 @@ class PlaybackManager(
 
     private var localPlayer: ExoPlayer? = null
     private var castPlayer: CastPlayer? = null
+    private var castContext: CastContext? = null
     private var _mediaSession: MediaSession? = null
     val mediaSession: MediaSession?
         get() = _mediaSession
@@ -89,12 +96,104 @@ class PlaybackManager(
     }
 
     init {
-        CastAvailability.init(appContext) { castContext ->
-            attachCast(castContext)
+        CastAvailability.init(appContext) { context ->
+            attachCast(context)
         }
     }
 
+    private val remoteCallback = object : RemoteMediaClient.Callback() {
+        override fun onStatusUpdated() {
+            val status = castContext?.sessionManager?.currentCastSession?.remoteMediaClient?.mediaStatus ?: return
+            when (status.playerState) {
+                MediaStatus.PLAYER_STATE_PLAYING -> _state.update { it.copy(isPlaying = true, isLoading = false) }
+                MediaStatus.PLAYER_STATE_PAUSED -> _state.update { it.copy(isPlaying = false, isLoading = false) }
+                MediaStatus.PLAYER_STATE_BUFFERING -> _state.update { it.copy(isLoading = true) }
+                MediaStatus.PLAYER_STATE_IDLE -> {
+                    if (status.idleReason == MediaStatus.IDLE_REASON_ERROR) {
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                isPlaying = false,
+                                error = "Dit programma speelt niet af op ${it.castDeviceName ?: "de Chromecast"}. Probeer het opnieuw of bekijk het op de telefoon."
+                            )
+                        }
+                    } else if (status.idleReason == MediaStatus.IDLE_REASON_FINISHED) {
+                        _state.update { it.copy(isPlaying = false, isLoading = false) }
+                    }
+                }
+            }
+        }
+    }
+
+    private val volumeListener = object : Cast.Listener() {
+        override fun onVolumeChanged() {
+            castContext?.sessionManager?.currentCastSession?.let { readVolume(it) }
+        }
+    }
+
+    private fun readVolume(session: CastSession) {
+        val volume = runCatching { session.volume.toFloat() }.getOrDefault(0.5f)
+        val muted = runCatching { session.isMute }.getOrDefault(false)
+        _state.update { it.copy(castVolume = volume, castMuted = muted) }
+    }
+
+    private fun watchRemote(session: CastSession) {
+        session.remoteMediaClient?.unregisterCallback(remoteCallback)
+        session.remoteMediaClient?.registerCallback(remoteCallback)
+        session.removeCastListener(volumeListener)
+        session.addCastListener(volumeListener)
+        readVolume(session)
+    }
+
+    private val sessionListener = object : SessionManagerListener<CastSession> {
+        override fun onSessionStarted(session: CastSession, sessionId: String) {
+            watchRemote(session)
+            _state.update {
+                it.copy(
+                    isCasting = true,
+                    castDeviceName = session.castDevice?.friendlyName,
+                    castProtocol = ProtocolType.GOOGLE_CAST,
+                    error = null
+                )
+            }
+        }
+
+        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+            watchRemote(session)
+            _state.update {
+                it.copy(
+                    isCasting = true,
+                    castDeviceName = session.castDevice?.friendlyName,
+                    castProtocol = ProtocolType.GOOGLE_CAST,
+                    error = null
+                )
+            }
+        }
+
+        override fun onSessionEnded(session: CastSession, error: Int) {
+            session.remoteMediaClient?.unregisterCallback(remoteCallback)
+            session.removeCastListener(volumeListener)
+            _state.update {
+                it.copy(
+                    isCasting = false,
+                    castDeviceName = null,
+                    castProtocol = null
+                )
+            }
+        }
+
+        override fun onSessionStarting(session: CastSession) {}
+        override fun onSessionStartFailed(session: CastSession, error: Int) {
+            _state.update { it.copy(isLoading = false) }
+        }
+        override fun onSessionEnding(session: CastSession) {}
+        override fun onSessionResuming(session: CastSession, sessionId: String) {}
+        override fun onSessionResumeFailed(session: CastSession, error: Int) {}
+        override fun onSessionSuspended(session: CastSession, reason: Int) {}
+    }
+
     private fun attachCast(castContext: CastContext) {
+        this.castContext = castContext
         val cp = CastPlayer(castContext, SchatkamerMediaItemConverter())
         cp.addListener(playerListener)
         cp.setSessionAvailabilityListener(object : SessionAvailabilityListener {
@@ -109,35 +208,13 @@ class PlaybackManager(
         castPlayer = cp
 
         castContext.sessionManager.addSessionManagerListener(
-            object : SessionManagerListener<CastSession> {
-                override fun onSessionStarted(session: CastSession, sessionId: String) {
-                    _state.update {
-                        it.copy(
-                            isCasting = true,
-                            castDeviceName = session.castDevice?.friendlyName
-                        )
-                    }
-                }
-
-                override fun onSessionEnded(session: CastSession, error: Int) {
-                    _state.update {
-                        it.copy(
-                            isCasting = false,
-                            castDeviceName = null
-                        )
-                    }
-                }
-
-                override fun onSessionStarting(session: CastSession) {}
-                override fun onSessionStartFailed(session: CastSession, error: Int) {}
-                override fun onSessionEnding(session: CastSession) {}
-                override fun onSessionResuming(session: CastSession, sessionId: String) {}
-                override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {}
-                override fun onSessionResumeFailed(session: CastSession, error: Int) {}
-                override fun onSessionSuspended(session: CastSession, reason: Int) {}
-            },
+            sessionListener,
             CastSession::class.java
         )
+
+        castContext.sessionManager.currentCastSession?.let { session ->
+            watchRemote(session)
+        }
     }
 
     fun play(media: PlayableMedia) {
@@ -180,7 +257,7 @@ class PlaybackManager(
                 active.seekTo(media.resumePositionMs)
             }
         } else {
-            // CastPlayer: laad media direct zonder concurrerende stop/clear-opdrachten
+            // CastPlayer: laad media direct
             if (media.resumePositionMs > 0) {
                 active.setMediaItem(mediaItem, media.resumePositionMs)
             } else {
@@ -215,7 +292,13 @@ class PlaybackManager(
             scope.launch { tvClient?.pause() }
             _state.update { it.copy(isPlaying = false) }
         } else {
-            _player.value?.pause()
+            val cp = castPlayer
+            if (_state.value.isCasting && cp != null && cp.isCastSessionAvailable) {
+                cp.pause()
+            } else {
+                _player.value?.pause()
+            }
+            _state.update { it.copy(isPlaying = false) }
         }
     }
 
@@ -227,25 +310,61 @@ class PlaybackManager(
             scope.launch { tvClient?.resume() }
             _state.update { it.copy(isPlaying = true) }
         } else {
-            _player.value?.play()
+            val cp = castPlayer
+            if (_state.value.isCasting && cp != null && cp.isCastSessionAvailable) {
+                cp.play()
+            } else {
+                _player.value?.play()
+            }
+            _state.update { it.copy(isPlaying = true) }
         }
     }
 
+    fun togglePlayPause() {
+        if (_state.value.isPlaying) pause() else resume()
+    }
+
     fun seekTo(positionMs: Long) {
+        val target = positionMs.coerceAtLeast(0L)
         if (airPlayClient != null) {
-            scope.launch { airPlayClient?.seekTo(positionMs) }
-            _state.update { it.copy(currentPositionMs = positionMs) }
+            scope.launch { airPlayClient?.seekTo(target) }
+            _state.update { it.copy(currentPositionMs = target) }
         } else if (tvClient != null) {
-            scope.launch { tvClient?.seekTo(positionMs) }
-            _state.update { it.copy(currentPositionMs = positionMs) }
+            scope.launch { tvClient?.seekTo(target) }
+            _state.update { it.copy(currentPositionMs = target) }
         } else {
-            _player.value?.seekTo(positionMs)
+            val remoteClient = castContext?.sessionManager?.currentCastSession?.remoteMediaClient
+            if (_state.value.isCasting && remoteClient != null) {
+                remoteClient.seek(MediaSeekOptions.Builder().setPosition(target).build())
+            } else {
+                _player.value?.seekTo(target)
+            }
+            _state.update { it.copy(currentPositionMs = target) }
         }
     }
 
     fun seekBy(offsetMs: Long) {
         val current = _state.value.currentPositionMs
         seekTo((current + offsetMs).coerceAtLeast(0L))
+    }
+
+    fun setCastVolume(volume: Float) {
+        val session = castContext?.sessionManager?.currentCastSession ?: return
+        runCatching { session.volume = volume.coerceIn(0f, 1f).toDouble() }
+        _state.update { it.copy(castVolume = volume.coerceIn(0f, 1f), castMuted = false) }
+    }
+
+    fun adjustCastVolume(up: Boolean) {
+        val current = _state.value.castVolume
+        val next = if (up) current + 0.05f else current - 0.05f
+        setCastVolume(next)
+    }
+
+    fun toggleCastMute() {
+        val session = castContext?.sessionManager?.currentCastSession ?: return
+        val muted = !_state.value.castMuted
+        runCatching { session.isMute = muted }
+        _state.update { it.copy(castMuted = muted) }
     }
 
     fun stop() {
@@ -423,12 +542,8 @@ class PlaybackManager(
     }
 
     fun stopCasting() {
-        runCatching {
-            CastContext.getSharedInstance(appContext, androidx.core.content.ContextCompat.getMainExecutor(appContext))
-                .addOnSuccessListener { castContext ->
-                    castContext.sessionManager.endCurrentSession(true)
-                }
-        }
+        castContext?.sessionManager?.endCurrentSession(true)
+        disconnectRemoteCast(resumeLocal = true)
     }
 
     private fun activePlayer(): Player {
@@ -483,52 +598,77 @@ class PlaybackManager(
     }
 
     private fun switchToCast() {
-        val local = localPlayer ?: return
-        val pos = local.currentPosition
         val currentMedia = _state.value.media ?: return
-        local.stop()
+        val pos = _state.value.currentPositionMs
+
+        localPlayer?.stop()
+        localPlayer?.clearMediaItems()
 
         val cp = castPlayer ?: return
         _player.value = cp
+        _state.update {
+            it.copy(
+                isCasting = true,
+                isLoading = true,
+                error = null
+            )
+        }
+
         val mediaItem = buildMediaItem(currentMedia)
-        cp.setMediaItem(mediaItem, pos)
+        if (pos > 0) {
+            cp.setMediaItem(mediaItem, pos)
+        } else {
+            cp.setMediaItem(mediaItem)
+        }
+        cp.playWhenReady = true
         cp.prepare()
-        cp.play()
+        startPositionPolling()
     }
 
     private fun switchToLocal() {
-        val cp = castPlayer
-        val pos = cp?.currentPosition ?: 0L
-        val currentMedia = _state.value.media ?: return
+        val pos = _state.value.currentPositionMs
+        val currentMedia = _state.value.media
+
+        castPlayer?.stop()
 
         val local = ensureLocal()
         _player.value = local
-        val mediaItem = buildMediaItem(currentMedia)
-
-        val headers = mutableMapOf(
-            "User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-            "Referer" to "https://schatkamer.beeldengeluid.nl/",
-            "Origin" to "https://schatkamer.beeldengeluid.nl"
-        )
-        if (currentMedia.cookieHeader.isNotBlank()) {
-            headers["Cookie"] = currentMedia.cookieHeader
+        _state.update {
+            it.copy(
+                isCasting = false,
+                castDeviceName = null,
+                isLoading = false
+            )
         }
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(headers["User-Agent"]!!)
-            .setAllowCrossProtocolRedirects(true)
-            .setDefaultRequestProperties(headers)
 
-        val mediaSource = HlsMediaSource.Factory(httpDataSourceFactory)
-            .setAllowChunklessPreparation(true)
-            .createMediaSource(mediaItem)
+        if (currentMedia != null) {
+            val mediaItem = buildMediaItem(currentMedia)
+            val headers = mutableMapOf(
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+                "Referer" to "https://schatkamer.beeldengeluid.nl/",
+                "Origin" to "https://schatkamer.beeldengeluid.nl"
+            )
+            if (currentMedia.cookieHeader.isNotBlank()) {
+                headers["Cookie"] = currentMedia.cookieHeader
+            }
+            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                .setUserAgent(headers["User-Agent"]!!)
+                .setAllowCrossProtocolRedirects(true)
+                .setDefaultRequestProperties(headers)
 
-        local.setMediaSource(mediaSource, pos)
-        local.prepare()
-        local.pause() // Gepauzeerd klaarzetten op mobiel
+            val mediaSource = HlsMediaSource.Factory(httpDataSourceFactory)
+                .setAllowChunklessPreparation(true)
+                .createMediaSource(mediaItem)
+
+            local.setMediaSource(mediaSource, if (pos > 0) pos else 0L)
+            local.prepare()
+            local.playWhenReady = false // Gepauzeerd klaarzetten op mobiel zoals Family7
+        }
     }
 
     private fun buildMediaItem(media: PlayableMedia): MediaItem {
         val builder = MediaItem.Builder()
+            .setMediaId(media.id)
             .setUri(media.streamUrl)
             .setMimeType(MimeTypes.APPLICATION_M3U8)
             .setMediaMetadata(
@@ -604,13 +744,26 @@ class PlaybackManager(
         positionPollJob?.cancel()
         positionPollJob = scope.launch {
             while (true) {
-                val p = _player.value
-                if (p != null) {
+                val isCast = _state.value.isCasting
+                val remoteClient = castContext?.sessionManager?.currentCastSession?.remoteMediaClient
+                if (isCast && remoteClient != null) {
+                    val pos = remoteClient.approximateStreamPosition
+                    val dur = remoteClient.streamDuration
                     _state.update {
                         it.copy(
-                            currentPositionMs = p.currentPosition.coerceAtLeast(0L),
-                            durationMs = p.duration.coerceAtLeast(0L)
+                            currentPositionMs = if (pos > 0) pos else it.currentPositionMs,
+                            durationMs = if (dur > 0) dur else it.durationMs
                         )
+                    }
+                } else {
+                    val p = _player.value
+                    if (p != null) {
+                        _state.update {
+                            it.copy(
+                                currentPositionMs = p.currentPosition.coerceAtLeast(0L),
+                                durationMs = p.duration.coerceAtLeast(0L)
+                            )
+                        }
                     }
                 }
                 delay(1000)

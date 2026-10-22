@@ -76,7 +76,8 @@ Schatkamer/
 - **Systeemrotatie & Tablet Support**:
   - Volgt naadloos de systeemrotatie van het toestel; geoptimaliseerd voor zowel smartphones als tablets.
 - **Native Zender Knoppen (Google Cast & Apple AirPlay)**:
-  - **Officiële Schatkamer Chromecast Receiver (`377B8439`)**: Gekoppeld aan de officiële Beeld & Geluid THEOplayer Chromecast Receiver (`377B8439`) inclusief volledige `configuration`- en `sourceDescription`-payloads met EZDRM Widevine & PlayReady integratie. Voorkomt dat streams direct na het starten crashen of stoppen op Chromecast en Google TV's.
+  - **Officiële Schatkamer Chromecast Receiver (`377B8439`) & Family7 Cast-architectuur**: Gekoppeld aan de officiële Beeld & Geluid THEOplayer Chromecast Receiver (`377B8439`) met de volledige THEOplayer licentie en live CDN (`fb21074d-a7cd-4fef-9206-e490101d6570`), EZDRM Widevine & PlayReady integratie en `network.cors.credentials = include`.
+  - **Family7-stijl Afstandsbediening (`CastController`)**: Volwaardig afstandsbedieningsscherm tijdens het casten met vervaagde achtergrondposter, apparaat-indicator pill, tijdlijnscrubber, afspelen/pauzeren, 10s terug / 30s vooruit, tv-volumeregelaar, mute-toggle, foutdetectie met herstel en knop "Op telefoon kijken".
   - **Standaard Google Cast Knop**: Direct geïntegreerd in de topbalk en videospeler. Opent direct de native Android `MediaRouteChooserDialog` voor betrouwbare verbinding met Chromecast en Google Nest schermen.
   - **Dedicated Apple AirPlay Zender Knop**: Opent een stabiel `AirPlaySenderDialog` met live mDNS discovery (`_airplay._tcp`), apparaatselectie, verbindingsstatus en afstandsbediening (play/pause/seek).
 - **Volledig Scherm & Native Redesign**:

@@ -144,6 +144,17 @@ fun PlayerScreen(
         }
     }
 
+    // Als we aan het casten zijn (Chromecast, Google TV, etc.), toon het speciale Family7-stijl CastController scherm
+    if (state.isCasting && !isInPipMode) {
+        CastController(
+            state = state,
+            playback = playbackManager,
+            onBack = onBack,
+            modifier = modifier
+        )
+        return
+    }
+
     // Auto-hide controls na 4 seconden wanneer aan het afspelen
     LaunchedEffect(showControls, state.isPlaying) {
         if (showControls && state.isPlaying) {
@@ -248,26 +259,6 @@ fun PlayerScreen(
             }
         }
 
-        // Cast indicator als we aan het casten zijn
-        if (state.isCasting && !isInPipMode) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.85f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CastButton()
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Aan het afspelen op ${state.castDeviceName ?: "TV"}",
-                        color = SchatkamerTextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
 
         // Foutafhandeling overlay met herstelknop
         if (state.error != null && !isInPipMode) {
