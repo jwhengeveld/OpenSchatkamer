@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
@@ -180,6 +181,7 @@ fun TvPlayer(
     }
 
     val playerView = remember { mutableStateOf<PlayerView?>(null) }
+    var controlsVisible by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(error) { if (error == null) runCatching { focus.requestFocus() } }
 
@@ -218,6 +220,7 @@ fun TvPlayer(
                     setShowNextButton(false)
                     setShowPreviousButton(false)
                     controllerShowTimeoutMs = 4000
+                    setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controlsVisible = v == android.view.View.VISIBLE })
                     keepScreenOn = true
                     // De toetsen komen via Compose binnen (zie onPreviewKeyEvent hierboven).
                     isFocusable = false
@@ -226,6 +229,24 @@ fun TvPlayer(
             },
             modifier = Modifier.fillMaxSize()
         )
+
+        // Titel bovenin zolang de bediening zichtbaar is.
+        androidx.compose.animation.AnimatedVisibility(
+            controlsVisible, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
+            modifier = Modifier.align(Alignment.TopStart)
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent)))
+                    .padding(start = 48.dp, end = 48.dp, top = 32.dp, bottom = 40.dp)
+            ) {
+                item.seriesTitle?.takeIf { it.isNotBlank() && it != item.title }?.let {
+                    Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber)
+                }
+                Text(item.title, style = MaterialTheme.typography.headlineSmall, color = Color.White, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+        }
 
         seekPreview?.let { pos ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {

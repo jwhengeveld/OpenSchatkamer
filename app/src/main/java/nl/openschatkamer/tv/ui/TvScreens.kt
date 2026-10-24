@@ -146,9 +146,9 @@ fun TvHomeScreen(
                         if (continueWatching.isNotEmpty()) {
                             item {
                                 TvRowTitle("Verder kijken")
-                                TvPivotScroll(8.dp) { LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                TvLazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                                     items(continueWatching, key = { it.item.id }) { TvProgramCard(it.item, { onPlay(it.item) }, progress = it.fraction) }
-                                } }
+                                }
                             }
                         }
                         h.data.browseRows.forEachIndexed { index, row ->
@@ -156,10 +156,10 @@ fun TvHomeScreen(
                             if (index == 1) timeTravel.forEach { t ->
                                 item(key = "tt${t.yearsAgo}") {
                                     TvRowTitle(t.spec.title)
-                                    TvPivotScroll(8.dp) { LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    TvLazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                                         items(t.items, key = { it.id }) { TvProgramCard(it, { onOpen(it) }) }
-                                        item { TvPill("Meer…", { onBrowse(t.spec) }) }
-                                    } }
+                                        item { TvMoreTile({ onBrowse(t.spec) }) }
+                                    }
                                 }
                             }
                         }
@@ -193,7 +193,8 @@ private fun TvResultsGrid(
     }
     LaunchedEffect(gridState, state.items.size) { snapshotFlow { nearEnd }.collect { if (it) viewModel.loadMore() } }
 
-    LazyVerticalGrid(
+    // De rij met focus blijft ruim in beeld in plaats van half onder de rand te vallen.
+    TvPivotScroll(96.dp) { LazyVerticalGrid(
         columns = GridCells.Adaptive(200.dp),
         state = gridState,
         contentPadding = SCREEN_PADDING,
@@ -210,7 +211,7 @@ private fun TvResultsGrid(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
                     TvRowTitle("Series")
-                    LazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    TvLazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                         items(state.series, key = { it.id }) { TvSeriesPoster(it, { onOpen(it) }, width = 120.dp) }
                     }
                 }
@@ -229,7 +230,7 @@ private fun TvResultsGrid(
                 if (state.isLoadingMore) item(span = { GridItemSpan(maxLineSpan) }) { TvLoading() }
             }
         }
-    }
+    } }
 }
 
 @Composable
@@ -237,7 +238,7 @@ private fun TvFilters(state: QueryState, viewModel: PagedQueryViewModel) {
     val f = state.filter
     Column {
         // Alle filters op één rij: soort, volgorde en periode.
-        LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        TvLazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             item { TvPill("Alles", { viewModel.update { it.copy(material = null) } }, f.material == null) }
             item { TvPill("Video", { viewModel.update { it.copy(material = "video") } }, f.material == "video") }
             item { TvPill("Audio", { viewModel.update { it.copy(material = "audio") } }, f.material == "audio") }
@@ -276,7 +277,7 @@ fun TvSearchScreen(viewModel: SearchViewModel, onOpen: (SchatkamerItem) -> Unit)
             }
             val chips = suggestions.ifEmpty { if (text.isBlank()) history.ifEmpty { listOf("Polygoon", "Jiskefet", "Swiebertje", "Toppop", "Elfstedentocht") } else emptyList() }
             if (chips.isNotEmpty()) {
-                LazyRow(contentPadding = PaddingValues(8.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TvLazyRow(contentPadding = PaddingValues(8.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(chips) { TvPill(it, { viewModel.submit(it) }) }
                 }
             }
@@ -333,17 +334,17 @@ fun TvBrowseScreen(viewModel: PagedQueryViewModel, spec: BrowseSpec, onOpen: (Sc
 @Composable
 fun TvDiscoverScreen(viewModel: DiscoverViewModel, onBrowse: (BrowseSpec) -> Unit) {
     val data by viewModel.data.collectAsState()
-    LazyColumn(contentPadding = SCREEN_PADDING, modifier = Modifier.fillMaxSize()) {
+    TvPivotScroll(64.dp) { LazyColumn(contentPadding = SCREEN_PADDING, modifier = Modifier.fillMaxSize()) {
         item { Text("Ontdekken", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 8.dp)) }
         item {
             TvRowTitle("Door de tijd")
-            LazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            TvLazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(Decade.entries.reversed()) { d -> TvPill(d.label, { onBrowse(BrowseSpec(d.label, decade = d)) }) }
             }
         }
         item {
             TvRowTitle("Omroepen")
-            LazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            TvLazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(data.broadcasters, key = { it.name }) { b ->
                     TvBroadcasterTile(b.name, b.logoUrl, { onBrowse(BrowseSpec(b.name, broadcaster = b.name)) },
                         count = if (b.count > 0) "${if (b.count >= 10_000) "10.000+" else b.count.toString()} uitzendingen" else null)
@@ -352,7 +353,7 @@ fun TvDiscoverScreen(viewModel: DiscoverViewModel, onBrowse: (BrowseSpec) -> Uni
         }
         if (data.people.isNotEmpty()) item {
             TvRowTitle("Personen")
-            LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            TvLazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(data.people, key = { it.id }) { p -> TvPersonCard(p) { onBrowse(BrowseSpec(p.title, person = p.title)) } }
             }
         }
@@ -376,6 +377,36 @@ fun TvDiscoverScreen(viewModel: DiscoverViewModel, onBrowse: (BrowseSpec) -> Uni
                 }
             }
         }
+    } }
+}
+
+// --------------------------------------------------------------------- kids
+
+/** Kinderprogramma's: klassieke series, poppenspel, jeugddrama, Jeugdjournaal en Het Klokhuis. */
+@Composable
+fun TvKidsScreen(viewModel: nl.openschatkamer.core.ui.KidsViewModel, onOpen: (SchatkamerItem) -> Unit, onBrowse: (BrowseSpec) -> Unit) {
+    val rows by viewModel.rows.collectAsState()
+    Box(Modifier.fillMaxSize()) {
+        // Een warme gloed bovenaan, zodat je ziet dat je in het kindergedeelte bent.
+        Box(
+            Modifier.fillMaxWidth().fillMaxHeight(0.5f)
+                .background(Brush.verticalGradient(listOf(BrandColors.Amber.copy(alpha = 0.16f), Color.Transparent)))
+        )
+        TvPivotScroll(64.dp) { LazyColumn(contentPadding = SCREEN_PADDING, modifier = Modifier.fillMaxSize().focusRestorer()) {
+            item {
+                Column(Modifier.padding(start = 8.dp, bottom = 4.dp)) {
+                    Text("Kids", style = MaterialTheme.typography.headlineMedium)
+                    Text("Sesamstraat, Swiebertje, Het Klokhuis en meer uit het archief.", style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted)
+                }
+            }
+            when (val r = rows) {
+                Load.Loading -> item { TvSkeletonRows() }
+                is Load.Failed -> item { TvMessage("Dat lukte even niet", r.message, "Opnieuw", viewModel::load) }
+                is Load.Ready -> items(r.data, key = { it.row.id }) { row ->
+                    TvCatalogRow(row.row, onOpen, onMore = row.more?.let { spec -> { onBrowse(spec) } })
+                }
+            }
+        } }
     }
 }
 
@@ -490,7 +521,7 @@ fun TvProgramScreen(
                     if (more.isNotEmpty()) {
                         item {
                             TvRowTitle("Meer uit ${p.seriesTitle ?: "deze serie"}")
-                            LazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                            TvLazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                                 items(more, key = { it.id }) { TvProgramCard(it, { onOpen(it) }) }
                             }
                         }
@@ -554,13 +585,13 @@ fun TvMyListScreen(
         }
         if (continueWatching.isNotEmpty()) item {
             TvRowTitle("Verder kijken")
-            LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            TvLazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(continueWatching, key = { it.item.id }) { TvProgramCard(it.item, { onPlay(it.item) }, progress = it.fraction) }
             }
         }
         if (series.isNotEmpty()) item {
             TvRowTitle(if (account != null) "Mijn series" else "Gevolgde series")
-            LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            TvLazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(series, key = { it.item.id }) { f ->
                     Box {
                         TvSeriesPoster(f.item, { onOpen(f.item) })
@@ -574,13 +605,13 @@ fun TvMyListScreen(
         }
         if (programs.isNotEmpty()) item {
             TvRowTitle(if (account != null) "Op dit toestel bewaard" else "Bewaarde uitzendingen")
-            LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            TvLazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(programs, key = { it.id }) { TvProgramCard(it, { onOpen(it) }) }
             }
         }
         if (lists.isNotEmpty()) item {
             TvRowTitle("Lijsten")
-            LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            TvLazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(lists, key = { it.key }) { list ->
                     Column(Modifier.width(280.dp)) {
                         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).tvFocusable({ onOpenList(list) }).background(BrandColors.SurfaceHigh), contentAlignment = Alignment.Center) {
@@ -597,7 +628,7 @@ fun TvMyListScreen(
         val watched = history.filter { it.isFinished }
         if (watched.isNotEmpty()) item {
             TvRowTitle("Bekeken")
-            LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            TvLazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(watched.take(30), key = { it.item.id }) { TvProgramCard(it.item, { onOpen(it.item) }) }
             }
         }

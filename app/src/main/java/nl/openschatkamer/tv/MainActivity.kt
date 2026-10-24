@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.ChildCare
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
@@ -38,6 +39,7 @@ import androidx.compose.runtime.key
 import nl.openschatkamer.core.ui.AccountViewModel
 import nl.openschatkamer.core.ui.ListViewModel
 import nl.openschatkamer.core.ui.TimeTravelViewModel
+import nl.openschatkamer.tv.ui.TvKidsScreen
 import nl.openschatkamer.tv.ui.TvFocusRegistry
 import nl.openschatkamer.tv.ui.LocalTvFocusRegistry
 import nl.openschatkamer.tv.ui.focusKey
@@ -105,6 +107,7 @@ private object Dest {
     const val HOME = "home"
     const val SEARCH = "search"
     const val DISCOVER = "discover"
+    const val KIDS = "kids"
     const val MY_LIST = "mylist"
     const val SERIES = "series/{id}"
     const val PROGRAM = "program/{id}"
@@ -328,6 +331,10 @@ class MainActivity : ComponentActivity() {
                             val vm: DiscoverViewModel = viewModel { DiscoverViewModel(app.catalog) }
                             TvDiscoverScreen(vm, browse)
                         }
+                        composable(Dest.KIDS) {
+                            val vm: nl.openschatkamer.core.ui.KidsViewModel = viewModel { nl.openschatkamer.core.ui.KidsViewModel(app.catalog) }
+                            TvKidsScreen(vm, open, browse)
+                        }
                         composable(Dest.MY_LIST) {
                             TvMyListScreen(library, open, { play(it, false) }, onOpenList = { nav.navigate("list/${android.net.Uri.encode(it.key)}") }, onAccount = { nav.navigate("account") })
                         }
@@ -401,6 +408,7 @@ private val ENTRIES = listOf(
     NavEntry(Dest.HOME, "Start", Icons.Rounded.Home),
     NavEntry(Dest.SEARCH, "Zoeken", Icons.Rounded.Search),
     NavEntry(Dest.DISCOVER, "Ontdekken", Icons.Rounded.Explore),
+    NavEntry(Dest.KIDS, "Kids", Icons.Rounded.ChildCare),
     NavEntry(Dest.MY_LIST, "Mijn lijst", Icons.Rounded.Bookmarks)
 )
 

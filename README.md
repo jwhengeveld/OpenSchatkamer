@@ -31,6 +31,14 @@ Zoals bij de Family7-app: de app leest de website zoals een browser dat doet, sl
 - **Leesbare teksten**: `JISKEFET` wordt "Jiskefet", een ontbrekende titel wordt "Uitzending van 16 september 1990", interne archiefvoorvoegsels verdwijnen.
 - **Zoeken** vangt typefouten op ("jiskfet" vindt Jiskefet), toont series bovenaan, suggesties tijdens het typen en geschiedenis. Filters op video/audio, periode, genre (met live aantallen) en sortering.
 
+## Kids
+
+Een eigen sectie (tabblad op de telefoon, item in de zijbalk op tv) met kinderprogramma's. De site heeft geen kindergenre, dus `KidsViewModel` combineert:
+- **Klassiekers**: een vaste lijst kinderseries met archief-id en nette naam (Sesamstraat, Het Klokhuis, Swiebertje, Dappere Dodo, Paulus de boskabouter, …). De live contracttest controleert wekelijks dat ze nog bestaan.
+- **Schooltv**: alles van de omroepen NOT en TELEAC, gegroepeerd per serie (meeste uitzendingen eerst), zodat nieuwe series vanzelf meekomen.
+- Rijen uit de zoekdienst: poppenspel, drama voor de jeugd, het Jeugdjournaal en Het Klokhuis.
+- Elke rij heeft **Kijk meer**: het bladerscherm met precies die zoekopdracht (`BrowseSpec` kan ook meerdere archiefomroepen en een serie aan).
+
 ## Afspelen
 
 - HLS (CMAF) met **Widevine via EZDRM**, net als de website.

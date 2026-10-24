@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +47,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -185,7 +188,7 @@ fun Modifier.tvFocusable(onClick: () -> Unit, shape: Shape = TvShape, scaleTo: F
  * er een rustig vlak met een icoon en eventueel de titel, nooit een leeg gat.
  */
 @Composable
-fun TvArtwork(url: String?, modifier: Modifier = Modifier, audio: Boolean = false, label: String? = null) {
+fun TvArtwork(url: String?, modifier: Modifier = Modifier, audio: Boolean = false, label: String? = null, placeholder: androidx.compose.ui.graphics.vector.ImageVector? = null) {
     Box(
         modifier.background(Brush.linearGradient(listOf(BrandColors.SurfaceHigh, BrandColors.Surface))),
         contentAlignment = Alignment.Center
@@ -193,7 +196,7 @@ fun TvArtwork(url: String?, modifier: Modifier = Modifier, audio: Boolean = fals
         var loaded by remember(url) { mutableStateOf(false) }
         if (!loaded) Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 18.dp)) {
             Icon(
-                if (audio) Icons.Rounded.Headphones else Icons.Rounded.Movie, null,
+                placeholder ?: if (audio) Icons.Rounded.Headphones else Icons.Rounded.Movie, null,
                 tint = (if (audio) BrandColors.Audio else BrandColors.Amber).copy(alpha = 0.7f), modifier = Modifier.size(26.dp)
             )
             if (!label.isNullOrBlank()) Text(
@@ -276,7 +279,7 @@ fun TvStoryCard(item: SchatkamerItem, onClick: () -> Unit) {
 @Composable
 fun TvPersonCard(item: SchatkamerItem, onClick: () -> Unit) {
     Column(Modifier.width(140.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        TvArtwork(item.imageUrl, Modifier.size(104.dp).tvFocusable(onClick, CircleShape), label = null)
+        TvArtwork(item.imageUrl, Modifier.size(104.dp).tvFocusable(onClick, CircleShape), placeholder = androidx.compose.material.icons.Icons.Rounded.Person)
         Spacer(Modifier.height(8.dp))
         Text(item.title, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center, maxLines = 2)
     }
@@ -308,7 +311,7 @@ fun TvRowTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun TvCatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit) {
+fun TvCatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit, onMore: (() -> Unit)? = null) {
     Column {
         TvRowTitle(row.title.trim())
         TvPivotScroll(8.dp) { LazyRow(
@@ -316,7 +319,9 @@ fun TvCatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit) {
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            itemsIndexed(row.items, key = { _, it -> it.kind.name + it.id }) { index, item ->
+            // Met "Kijk meer" een kortere rij, zodat die knop snel binnen bereik is.
+            val shown = if (onMore != null) row.items.take(12) else row.items
+            itemsIndexed(shown, key = { _, it -> it.kind.name + it.id }) { index, item ->
                 val open = { onOpen(item) }
                 when {
                     row.layout == RowLayout.RANKED -> Row(verticalAlignment = Alignment.Bottom) {
@@ -330,22 +335,56 @@ fun TvCatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit) {
                     else -> TvProgramCard(item, open)
                 }
             }
+            if (onMore != null) item(key = "meer") { TvMoreTile(onMore, portrait = row.layout == RowLayout.PORTRAIT) }
         } }
     }
 }
 
 @Composable
 fun TvPill(text: String, onClick: () -> Unit, selected: Boolean = false) {
+    // Focus = licht met donkere tekst, gekozen = amber. Zo zie je ook op een
+    // gekozen knop (zoals "Alles") altijd waar de focus staat.
+    var focused by remember { mutableStateOf(false) }
+    val background by androidx.compose.animation.animateColorAsState(
+        when { focused -> BrandColors.Text; selected -> BrandColors.Amber; else -> BrandColors.SurfaceHigh }, tween(150), label = "knop"
+    )
     Text(
         text,
         style = MaterialTheme.typography.titleSmall,
-        color = if (selected) BrandColors.Ink else BrandColors.Text,
+        color = if (focused || selected) BrandColors.Ink else BrandColors.Text,
         modifier = Modifier
+            .onFocusChanged { focused = it.hasFocus }
             .tvFocusable(onClick, RoundedCornerShape(50), 1.08f)
-            .background(if (selected) BrandColors.Amber else BrandColors.SurfaceHigh)
+            .background(background)
             .padding(horizontal = 18.dp, vertical = 10.dp)
     )
 }
+
+/** Laatste kaart van een rij: naar de volledige zoekopdracht achter die rij. */
+@Composable
+fun TvMoreTile(onClick: () -> Unit, portrait: Boolean = false) {
+    Column(Modifier.width(if (portrait) 140.dp else 240.dp)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(if (portrait) 2f / 3f else 16f / 9f)
+                .tvFocusable(onClick).background(BrandColors.SurfaceHigh),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = BrandColors.Amber, modifier = Modifier.size(32.dp))
+                Text("Kijk meer", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+    }
+}
+
+/** Een horizontale rij met het vaste focuspunt van [TvPivotScroll]. */
+@Composable
+fun TvLazyRow(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit
+) = TvPivotScroll(8.dp) { LazyRow(modifier = modifier, contentPadding = contentPadding, horizontalArrangement = horizontalArrangement, content = content) }
 
 /**
  * Tekstvelden op de tv houden de pijltjes vast (die verplaatsen de cursor).

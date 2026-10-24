@@ -73,6 +73,14 @@ class LiveSiteContractTest {
     }
 
     @Test
+    fun `kinderseries van de kids-sectie bestaan nog`() {
+        val ids = nl.openschatkamer.core.ui.KidsViewModel.CLASSICS.map { it.first } +
+            nl.openschatkamer.core.ui.KidsViewModel.JEUGDJOURNAAL + nl.openschatkamer.core.ui.KidsViewModel.KLOKHUIS
+        val missing = ids.filter { get("$base/api/media/bff/series/$it").first != 200 }
+        assertTrue("Kinderseries niet meer gevonden: $missing", missing.isEmpty())
+    }
+
+    @Test
     fun `gebruikersdienst vraagt een token`() {
         val (code, body) = get("$base/api/user/bff/lists")
         assertEquals(401, code)

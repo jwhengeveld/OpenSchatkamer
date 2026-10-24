@@ -305,9 +305,9 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, actionLabel: Str
 
 /** Een rij van de website, met de kaartvorm die bij de rij hoort. */
 @Composable
-fun CatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit, modifier: Modifier = Modifier) {
+fun CatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit, modifier: Modifier = Modifier, showHeader: Boolean = true) {
     Column(modifier) {
-        SectionHeader(row.title.trim())
+        if (showHeader) SectionHeader(row.title.trim())
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             itemsIndexed(row.items, key = { _, it -> it.kind.name + it.id }) { index, item ->
                 val open = { onOpen(item) }

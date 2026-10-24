@@ -18,24 +18,36 @@ data class BrowseSpec(
     val person: String? = null,
     val decade: Decade? = null,
     val dateFrom: String? = null,
-    val dateTo: String? = null
+    val dateTo: String? = null,
+    /** Omroepen precies zoals ze in het archief heten (bijv. NOT en TELEAC voor Schooltv). */
+    val archiveBroadcasters: List<String> = emptyList(),
+    val seriesId: String? = null,
+    /** "video", "audio" of null. */
+    val material: String? = null
 ) {
     fun toFilter(catalog: SchatkamerCatalogRepository): SearchFilter = SearchFilter(
-        broadcasters = broadcaster?.let { catalog.broadcasterByName(it).archiveNames.toSet() }.orEmpty(),
+        broadcasters = broadcaster?.let { catalog.broadcasterByName(it).archiveNames.toSet() }.orEmpty() + archiveBroadcasters,
+        seriesId = seriesId,
+        material = material,
         genres = setOfNotNull(genre),
         subjects = setOfNotNull(subject),
         people = setOfNotNull(person),
         decade = decade,
         dateFrom = dateFrom,
         dateTo = dateTo,
-        sort = if (dateFrom != null) SortOrder.OLDEST else SortOrder.RELEVANCE
+        sort = when {
+            dateFrom != null -> SortOrder.OLDEST
+            seriesId != null -> SortOrder.NEWEST
+            else -> SortOrder.RELEVANCE
+        }
     )
 
     /** Kort label voor boven de titel. */
     val kindLabel: String
         get() = when {
             person != null -> "PERSOON"
-            broadcaster != null -> "OMROEP"
+            seriesId != null -> "SERIE"
+            broadcaster != null || archiveBroadcasters.isNotEmpty() -> "OMROEP"
             genre != null -> "GENRE"
             subject != null -> "ONDERWERP"
             dateFrom != null -> "TERUG IN DE TIJD"
@@ -52,6 +64,9 @@ data class BrowseSpec(
         decade?.let { appendQueryParameter("d", it.name) }
         dateFrom?.let { appendQueryParameter("df", it) }
         dateTo?.let { appendQueryParameter("dt", it) }
+        if (archiveBroadcasters.isNotEmpty()) appendQueryParameter("ab", archiveBroadcasters.joinToString("|"))
+        seriesId?.let { appendQueryParameter("sid", it) }
+        material?.let { appendQueryParameter("m", it) }
     }.build().encodedQuery.orEmpty()
 
     companion object {
@@ -65,7 +80,10 @@ data class BrowseSpec(
                 person = uri.getQueryParameter("p"),
                 decade = uri.getQueryParameter("d")?.let { runCatching { Decade.valueOf(it) }.getOrNull() },
                 dateFrom = uri.getQueryParameter("df"),
-                dateTo = uri.getQueryParameter("dt")
+                dateTo = uri.getQueryParameter("dt"),
+                archiveBroadcasters = uri.getQueryParameter("ab")?.split('|')?.filter { it.isNotBlank() }.orEmpty(),
+                seriesId = uri.getQueryParameter("sid"),
+                material = uri.getQueryParameter("m")
             )
         }
     }

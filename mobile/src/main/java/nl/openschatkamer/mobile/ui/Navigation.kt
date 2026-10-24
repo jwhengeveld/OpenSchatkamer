@@ -11,6 +11,7 @@ object Routes {
     const val HOME = "home"
     const val SEARCH = "search"
     const val DISCOVER = "discover"
+    const val KIDS = "kids"
     const val MY_LIST = "mylist"
     const val SERIES = "series/{id}"
     const val PROGRAM = "program/{id}"

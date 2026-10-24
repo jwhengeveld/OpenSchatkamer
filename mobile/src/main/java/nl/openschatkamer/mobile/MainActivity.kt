@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.ChildCare
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
@@ -253,6 +254,10 @@ class MainActivity : AppCompatActivity() {
                         val vm: DiscoverViewModel = viewModel { DiscoverViewModel(app.catalog) }
                         DiscoverScreen(vm, onBrowse = { nav.navigate(Routes.browse(it)) }, contentPadding = padding)
                     }
+                    composable(Routes.KIDS, deepLinks = listOf(navDeepLink { uriPattern = "openschatkamer://kids" })) {
+                        val vm: nl.openschatkamer.core.ui.KidsViewModel = viewModel { nl.openschatkamer.core.ui.KidsViewModel(app.catalog) }
+                        nl.openschatkamer.mobile.ui.screens.KidsScreen(vm, onOpen = { nav.open(it) }, onBrowse = { nav.navigate(Routes.browse(it)) }, contentPadding = padding)
+                    }
                     composable(Routes.MY_LIST, deepLinks = listOf(navDeepLink { uriPattern = "openschatkamer://mylist" })) {
                         MyListScreen(
                             library,
@@ -374,6 +379,7 @@ private val TABS = listOf(
     Tab(Routes.HOME, "Start", Icons.Rounded.Home),
     Tab(Routes.SEARCH, "Zoeken", Icons.Rounded.Search),
     Tab(Routes.DISCOVER, "Ontdekken", Icons.Rounded.Explore),
+    Tab(Routes.KIDS, "Kids", Icons.Rounded.ChildCare),
     Tab(Routes.MY_LIST, "Mijn lijst", Icons.Rounded.Bookmarks)
 )
 

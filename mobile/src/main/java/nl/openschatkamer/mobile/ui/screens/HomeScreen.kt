@@ -125,7 +125,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.homeContent(
         item(key = row.id, contentType = "row") { CatalogRow(row, onOpen) }
         if (index == 1) timeTravel.forEach { t ->
             item(key = "tt-${t.yearsAgo}", contentType = "row") {
-                SectionHeader(t.spec.title, actionLabel = "Meer", onAction = { onBrowse(t.spec) })
+                SectionHeader(t.spec.title, actionLabel = "Kijk meer", onAction = { onBrowse(t.spec) })
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(t.items, key = { it.id }) { ProgramCard(it, { onOpen(it) }) }
                 }
