@@ -18,7 +18,6 @@ release/
 dist/
 *.zip
 *.crx
-browser-extension/keys/
 
 # Gegenereerde Baseline Profiles horen wel in git.
 !*/src/release/

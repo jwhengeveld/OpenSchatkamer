@@ -171,6 +171,10 @@ class MainActivity : AppCompatActivity() {
 
     @Composable
     private fun AppRoot() {
+        val updates: nl.openschatkamer.core.update.UpdateViewModel = viewModel {
+            nl.openschatkamer.core.update.UpdateViewModel(application, BuildConfig.VERSION_NAME, "openschatkamer-mobile-")
+        }
+        nl.openschatkamer.mobile.ui.components.UpdateDialog(updates)
         val playback = app.playback
         val library = app.library
         val state by playback.state.collectAsState()
@@ -266,7 +270,8 @@ class MainActivity : AppCompatActivity() {
                             onAccount = { nav.navigate(Routes.ACCOUNT) },
                             onHistory = { nav.navigate(Routes.HISTORY) },
                             onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) },
-                            contentPadding = padding
+                            contentPadding = padding,
+                            onCheckUpdates = { updates.check() }
                         )
                     }
                     composable(

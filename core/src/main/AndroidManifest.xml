@@ -5,4 +5,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Updates vanuit de GitHub-releases installeren (de app staat niet in de Play Store). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <application>
+        <receiver android:name="nl.openschatkamer.core.update.InstallResultReceiver" android:exported="false" />
+    </application>
 </manifest>

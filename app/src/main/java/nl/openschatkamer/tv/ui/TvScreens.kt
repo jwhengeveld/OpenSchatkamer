@@ -80,6 +80,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Search
@@ -595,7 +596,8 @@ fun TvMyListScreen(
     onOpen: (SchatkamerItem) -> Unit,
     onPlay: (SchatkamerItem) -> Unit,
     onOpenList: (AnyList) -> Unit,
-    onAccount: () -> Unit
+    onAccount: () -> Unit,
+    onCheckUpdates: () -> Unit = {}
 ) {
     val account by library.account.collectAsState()
     val favorites by library.favorites.collectAsState()
@@ -663,7 +665,16 @@ fun TvMyListScreen(
                 items(watched.take(30), key = { it.item.id }) { TvProgramCard(it.item, { onOpen(it.item) }) }
             }
         }
-        item { Spacer(Modifier.height(24.dp)); Text(UNOFFICIAL_NOTICE, style = MaterialTheme.typography.bodySmall, color = BrandColors.TextMuted, modifier = Modifier.padding(8.dp)) }
+        item {
+            Spacer(Modifier.height(24.dp))
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty() }
+            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                TvPill("Controleren op updates", onCheckUpdates)
+                Text("Versie $version", style = MaterialTheme.typography.bodySmall, color = BrandColors.TextMuted)
+            }
+            Text(UNOFFICIAL_NOTICE, style = MaterialTheme.typography.bodySmall, color = BrandColors.TextMuted, modifier = Modifier.padding(8.dp))
+        }
     }
 }
 
@@ -796,6 +807,71 @@ fun TvActionsDialog(item: SchatkamerItem, library: UserLibrary, onDismiss: () ->
                 }
             }
             Row(Modifier.padding(top = 22.dp)) { TvPill("Sluiten", onDismiss) }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ updates
+
+/** Venster voor een nieuwe versie uit de GitHub-releases, te bedienen met de afstandsbediening. */
+@Composable
+fun TvUpdateDialog(viewModel: nl.openschatkamer.core.update.UpdateViewModel) {
+    val state by viewModel.state.collectAsState()
+    val s = state
+    if (s == nl.openschatkamer.core.update.UpdateViewModel.State.Idle) return
+    androidx.compose.ui.window.Dialog(onDismissRequest = {
+        if (s is nl.openschatkamer.core.update.UpdateViewModel.State.Available) viewModel.later()
+        else if (s !is nl.openschatkamer.core.update.UpdateViewModel.State.Downloading) viewModel.dismiss()
+    }) {
+        Column(Modifier.clip(RoundedCornerShape(16.dp)).background(BrandColors.Surface).padding(28.dp).width(620.dp)) {
+            when (s) {
+                is nl.openschatkamer.core.update.UpdateViewModel.State.Checking -> {
+                    Text("Zoeken naar updates…", style = MaterialTheme.typography.headlineSmall)
+                    TvLoading()
+                }
+                is nl.openschatkamer.core.update.UpdateViewModel.State.UpToDate -> {
+                    Text("Je hebt de nieuwste versie", style = MaterialTheme.typography.headlineSmall)
+                    Row(Modifier.padding(top = 22.dp)) { TvPill("Oké", viewModel::dismiss, selected = true) }
+                }
+                is nl.openschatkamer.core.update.UpdateViewModel.State.Available -> {
+                    Text("Versie ${s.release.version} is er", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        s.release.notes.replace("**", "").replace("### ", "").replace("## ", "").trim(),
+                        style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted, maxLines = 6, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                    val first = remember { androidx.compose.ui.focus.FocusRequester() }
+                    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+                    Row(Modifier.padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.focusRequester(first)) { TvPill("Bijwerken", viewModel::install, selected = true) }
+                        TvPill("Later", viewModel::later)
+                    }
+                }
+                is nl.openschatkamer.core.update.UpdateViewModel.State.Downloading -> {
+                    Text("Versie ${s.release.version} downloaden", style = MaterialTheme.typography.headlineSmall)
+                    Box(Modifier.padding(top = 18.dp).fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(BrandColors.SurfaceHigh)) {
+                        Box(Modifier.fillMaxWidth(s.progress).height(6.dp).background(BrandColors.Amber))
+                    }
+                    Text("${(s.progress * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted, modifier = Modifier.padding(top = 8.dp))
+                }
+                is nl.openschatkamer.core.update.UpdateViewModel.State.Installing -> {
+                    Text("Bijna klaar", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "Bevestig de installatie in het venster van Android. Vraagt Android om toestemming voor onbekende apps, sta die dan toe voor OpenSchatkamer TV.",
+                        style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted, modifier = Modifier.padding(top = 12.dp)
+                    )
+                    Row(Modifier.padding(top = 22.dp)) { TvPill("Oké", viewModel::dismiss, selected = true) }
+                }
+                is nl.openschatkamer.core.update.UpdateViewModel.State.Failed -> {
+                    Text("Bijwerken lukte niet", style = MaterialTheme.typography.headlineSmall)
+                    Text(s.message, style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted, modifier = Modifier.padding(top = 12.dp))
+                    Row(Modifier.padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (s.release != null) TvPill("Opnieuw", viewModel::install, selected = true)
+                        TvPill("Sluiten", viewModel::dismiss)
+                    }
+                }
+                else -> Unit
+            }
         }
     }
 }

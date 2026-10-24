@@ -40,6 +40,7 @@ import androidx.compose.runtime.key
 import nl.openschatkamer.core.ui.AccountViewModel
 import nl.openschatkamer.core.ui.ListViewModel
 import nl.openschatkamer.core.ui.TimeTravelViewModel
+import nl.openschatkamer.tv.ui.TvUpdateDialog
 import nl.openschatkamer.tv.ui.TvKidsScreen
 import nl.openschatkamer.tv.ui.TvFocusRegistry
 import nl.openschatkamer.tv.ui.LocalTvFocusRegistry
@@ -169,6 +170,9 @@ class MainActivity : ComponentActivity() {
         val history by library.local.history.collectAsState()
         val continueWatching by library.local.continueWatching.collectAsState()
         val homeViewModel: HomeViewModel = viewModel { HomeViewModel(app.catalog) }
+        val updates: nl.openschatkamer.core.update.UpdateViewModel = viewModel {
+            nl.openschatkamer.core.update.UpdateViewModel(application, BuildConfig.VERSION_NAME, "openschatkamer-tv-")
+        }
         val timeTravelViewModel: TimeTravelViewModel = viewModel { TimeTravelViewModel(app.catalog) }
         val timeTravel by timeTravelViewModel.rows.collectAsState()
         val homeState by homeViewModel.home.collectAsState()
@@ -340,7 +344,7 @@ class MainActivity : ComponentActivity() {
                             TvKidsScreen(vm, open, browse)
                         }
                         composable(Dest.MY_LIST) {
-                            TvMyListScreen(library, open, { play(it, false) }, onOpenList = { nav.navigate("list/${android.net.Uri.encode(it.key)}") }, onAccount = { nav.navigate("account") })
+                            TvMyListScreen(library, open, { play(it, false) }, onOpenList = { nav.navigate("list/${android.net.Uri.encode(it.key)}") }, onAccount = { nav.navigate("account") }, onCheckUpdates = { updates.check() })
                         }
                         composable(Dest.SERIES, listOf(navArgument("id") { type = NavType.StringType })) { e ->
                             val id = e.arguments?.getString("id").orEmpty()
@@ -398,6 +402,7 @@ class MainActivity : ComponentActivity() {
             }
 
             actionItem?.let { item -> TvActionsDialog(item, library, onDismiss = { actionItem = null }, onOpenSeries = open) }
+            if (playing == null) TvUpdateDialog(updates)
 
         }
         }

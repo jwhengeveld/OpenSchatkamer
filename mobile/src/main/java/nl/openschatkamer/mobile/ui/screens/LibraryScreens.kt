@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudSync
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.History
@@ -119,7 +120,8 @@ fun MyListScreen(
     onAccount: () -> Unit,
     onHistory: () -> Unit,
     onDiagnostics: () -> Unit,
-    contentPadding: PaddingValues
+    contentPadding: PaddingValues,
+    onCheckUpdates: () -> Unit = {}
 ) {
     val account by library.account.collectAsState()
     val favorites by library.favorites.collectAsState()
@@ -220,6 +222,7 @@ fun MyListScreen(
             MoreRow(Icons.Rounded.History, "Kijkgeschiedenis", onHistory)
             MoreRow(Icons.Rounded.Bookmark, "Back-up maken van je lijsten op dit toestel") { exporter.launch("openschatkamer-backup.json") }
             MoreRow(Icons.Rounded.CloudSync, "Back-up terugzetten") { importer.launch(arrayOf("application/json")) }
+            MoreRow(Icons.Rounded.SystemUpdate, "Controleren op updates", onCheckUpdates)
         }
         item {
             Column(Modifier.padding(16.dp)) {

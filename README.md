@@ -110,6 +110,15 @@ AirPlay en "naar de TV-app sturen" zijn verwijderd. Een Apple TV kan deze Widevi
 Op externe volumes komen de builds in `~/.builds/Schatkamer/` (zie `build.gradle.kts`).
 App-id's: `nl.openschatkamer.mobile` en `nl.openschatkamer.tv`.
 
+## Updates
+
+De apps staan niet in de Play Store; ze werken zichzelf bij vanuit de [GitHub-releases](https://github.com/jwhengeveld/OpenSchatkamer/releases).
+- Bij het openen kijkt de app hoogstens twee keer per dag naar de nieuwste release (`core/update/AppUpdater.kt`). "Later" slaat die versie over tot er een nieuwere is.
+- Handmatig controleren kan via **Mijn lijst → Controleren op updates**.
+- De app downloadt de APK voor het eigen platform (`openschatkamer-mobile-…` of `openschatkamer-tv-…`) en geeft hem aan de Android-installer. De eerste keer vraagt Android om toestemming om apps van deze bron te installeren.
+- Een update past alleen als hij met dezelfde sleutel is ondertekend. Bouw releases daarom altijd op dezelfde machine, of met dezelfde `keystore.properties`.
+- Een release heeft altijd beide APK's met precies deze namen nodig, anders vindt de app de update niet.
+
 ## Licenties
 
 DM Serif Display staat onder de SIL Open Font License (`brand/licenses/`). Omroeplogo's en alle uitzendingen zijn eigendom van de rechthebbenden.
