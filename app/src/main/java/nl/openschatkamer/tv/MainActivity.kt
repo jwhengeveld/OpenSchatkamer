@@ -62,6 +62,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -319,12 +320,12 @@ private fun SideNav(nav: NavHostController) {
     val requesters = remember { ENTRIES.map { FocusRequester() } }
     Column(
         Modifier
-            .fillMaxHeight().width(124.dp).background(BrandColors.Surface).padding(vertical = 28.dp)
+            .fillMaxHeight().width(88.dp).background(BrandColors.Surface).padding(vertical = 28.dp)
             // Naar links de zijbalk in: altijd op het actieve tabblad landen (zoals Google TV).
             .focusProperties { enter = { requesters[activeIndex] } }
             .focusGroup(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Spacer(Modifier.height(40.dp))
         ENTRIES.forEachIndexed { index, e ->
@@ -349,13 +350,13 @@ private fun SideNav(nav: NavHostController) {
                             restoreState = true
                         }
                     }
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                    .width(84.dp),
+                    .padding(horizontal = 4.dp, vertical = 8.dp)
+                    .width(68.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val color = if (focused) BrandColors.Ink else if (selected) BrandColors.Amber else BrandColors.TextMuted
-                Icon(e.icon, null, tint = color, modifier = Modifier.size(28.dp))
-                Text(e.label, color = color, style = MaterialTheme.typography.bodySmall)
+                Icon(e.icon, null, tint = color, modifier = Modifier.size(24.dp))
+                Text(e.label, color = color, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, maxLines = 1)
             }
         }
     }

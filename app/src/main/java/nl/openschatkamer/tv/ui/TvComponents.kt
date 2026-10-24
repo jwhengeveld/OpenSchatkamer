@@ -74,8 +74,23 @@ import nl.openschatkamer.core.data.SchatkamerItem
 import nl.openschatkamer.core.data.SchatkamerRow
 import nl.openschatkamer.core.data.SchatkamerText
 
+/**
+ * Hoe compact de tv-interface is. Op een tv kijk je van een afstand, maar met de
+ * standaarddichtheid paste er te weinig op het scherm; 0,8 geeft ongeveer vijf
+ * kaarten per rij en de hele zijbalk in beeld.
+ */
+private const val TV_UI_SCALE = 0.8f
+
 @Composable
 fun TvTheme(content: @Composable () -> Unit) {
+    val base = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density * TV_UI_SCALE, base.fontScale)
+    ) { TvMaterialTheme(content) }
+}
+
+@Composable
+private fun TvMaterialTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = BrandColors.Amber, onPrimary = BrandColors.Ink,
