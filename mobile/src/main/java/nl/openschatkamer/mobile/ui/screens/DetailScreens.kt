@@ -28,6 +28,16 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import nl.openschatkamer.core.data.UserLibrary
+import nl.openschatkamer.mobile.ui.components.AddToListSheet
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Headphones
@@ -69,7 +79,6 @@ import nl.openschatkamer.core.data.SchatkamerProgramDetail
 import nl.openschatkamer.core.data.SchatkamerSeries
 import nl.openschatkamer.core.data.SchatkamerText
 import nl.openschatkamer.core.data.SortOrder
-import nl.openschatkamer.core.data.WatchProgress
 import nl.openschatkamer.mobile.cast.CastButton
 import nl.openschatkamer.core.ui.BrowseSpec
 import nl.openschatkamer.core.ui.BrowseViewModel
@@ -138,9 +147,7 @@ private fun Backdrop(url: String, modifier: Modifier = Modifier, blurred: Boolea
 fun SeriesScreen(
     viewModel: SeriesViewModel,
     seriesId: String,
-    isFavorite: Boolean,
-    onToggleFavorite: (SchatkamerItem) -> Unit,
-    progressOf: (String) -> WatchProgress?,
+    library: UserLibrary,
     onOpen: (SchatkamerItem) -> Unit,
     onPlay: (SchatkamerItem) -> Unit,
     onBrowse: (BrowseSpec) -> Unit,
@@ -156,6 +163,12 @@ fun SeriesScreen(
 
     val data = (series as? Load.Ready)?.data
     val item = data?.toItem() ?: memo ?: SchatkamerItem(id = seriesId, title = "", kind = ItemKind.SERIES, seriesId = seriesId)
+    library.series.collectAsState().value
+    val following = library.isFollowing(seriesId)
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    // Geopend: eventuele "nieuwe afleveringen" zijn nu gezien.
+    LaunchedEffect(state.total) { if (state.total > 0) library.local.markSeriesSeen(seriesId, state.total) }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
@@ -186,10 +199,10 @@ fun SeriesScreen(
                         Icon(Icons.Rounded.PlayArrow, null); Spacer(Modifier.width(6.dp))
                         Text(if (state.filter.sort == SortOrder.OLDEST) "Eerste aflevering" else "Nieuwste aflevering")
                     }
-                    OutlinedButton(onClick = { onToggleFavorite(item) }) {
-                        Icon(if (isFavorite) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, null, tint = BrandColors.Amber)
+                    OutlinedButton(onClick = { library.toggleFollow(item, state.total) }) {
+                        Icon(if (following) Icons.Rounded.Check else Icons.Rounded.Add, null, tint = BrandColors.Amber)
                         Spacer(Modifier.width(6.dp))
-                        Text(if (isFavorite) "Bewaard" else "Bewaar", color = BrandColors.Text)
+                        Text(if (following) "Volgend" else "Volgen", color = BrandColors.Text)
                     }
                 }
             }
@@ -214,6 +227,9 @@ fun SeriesScreen(
                         Text("Afleveringen", style = MaterialTheme.typography.headlineSmall)
                         if (state.loaded) Text(countLabel(state.total, if (state.total == 1) "aflevering" else "afleveringen"), style = MaterialTheme.typography.bodySmall, color = BrandColors.TextMuted)
                     }
+                    IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) { query = ""; viewModel.update { it.copy(query = "", sort = SortOrder.OLDEST) } } }) {
+                        Icon(Icons.Rounded.Search, "Zoeken in deze serie", tint = BrandColors.Amber)
+                    }
                     TextButton(onClick = viewModel::toggleSort) {
                         Icon(Icons.Rounded.SwapVert, null, tint = BrandColors.Amber, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
@@ -221,13 +237,27 @@ fun SeriesScreen(
                     }
                 }
             }
+            if (searchOpen) {
+                item {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { q -> query = q; viewModel.update { it.copy(query = q.trim(), sort = if (q.isBlank()) SortOrder.OLDEST else SortOrder.RELEVANCE) } },
+                        singleLine = true, placeholder = { Text("Zoek in ${item.title}") },
+                        leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = BrandColors.Amber, cursorColor = BrandColors.Amber),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+            }
             when {
                 state.isLoading -> item { SkeletonList(4) }
                 state.error != null -> item { ErrorState(state.error!!, viewModel::retry) }
-                state.loaded && state.items.isEmpty() -> item { EmptyState("Geen afleveringen", "Van deze serie is (nog) niets af te spelen.") }
+                state.loaded && state.items.isEmpty() -> item {
+                    EmptyState(if (query.isNotBlank()) "Niets gevonden" else "Geen afleveringen", if (query.isNotBlank()) "Geen aflevering past bij \"$query\"." else "Van deze serie is (nog) niets af te spelen.")
+                }
                 else -> {
                     items(state.items, key = { it.id }) { ep ->
-                        ProgramListItem(ep, { onOpen(ep) }, showSeries = false, progress = progressOf(ep.id)?.fraction)
+                        ProgramListItem(ep, { onOpen(ep) }, showSeries = false)
                     }
                     if (state.isLoadingMore) item { LoadingFooter() }
                 }
@@ -263,9 +293,7 @@ private fun ExpandableText(text: String, collapsedLines: Int = 4) {
 fun ProgramScreen(
     viewModel: ProgramViewModel,
     programId: String,
-    isFavorite: Boolean,
-    progress: WatchProgress?,
-    onToggleFavorite: (SchatkamerItem) -> Unit,
+    library: UserLibrary,
     onPlay: (SchatkamerItem, Boolean) -> Unit,
     onOpen: (SchatkamerItem) -> Unit,
     onBrowse: (BrowseSpec) -> Unit,
@@ -278,6 +306,12 @@ fun ProgramScreen(
     val detail = (detailState as? Load.Ready<SchatkamerProgramDetail>)?.data
     val item = detail?.toItem() ?: memo ?: SchatkamerItem(id = programId, title = "")
     val context = LocalContext.current
+    val history by library.local.history.collectAsState()
+    library.favorites.collectAsState().value
+    library.lists.collectAsState().value
+    val progress = history.firstOrNull { it.item.id == programId }
+    val isFavorite = library.isFavorite(item)
+    var addToList by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
@@ -330,8 +364,15 @@ fun ProgramScreen(
                     if (resumable) {
                         IconButton(onClick = { onPlay(item, true) }) { Icon(Icons.Rounded.Replay, "Vanaf het begin", tint = BrandColors.Text) }
                     }
-                    IconButton(onClick = { onToggleFavorite(item) }) {
-                        Icon(if (isFavorite) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, "Bewaren", tint = BrandColors.Amber)
+                    IconButton(onClick = { library.toggleFavorite(item) }) {
+                        Icon(if (isFavorite) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, if (isFavorite) "Uit Mijn lijst halen" else "Bewaren", tint = BrandColors.Amber)
+                    }
+                    IconButton(onClick = { addToList = true }) {
+                        Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, "Toevoegen aan lijst", tint = BrandColors.Text)
+                    }
+                    val watched = progress?.isFinished == true
+                    IconButton(onClick = { library.local.setWatched(item, !watched) }) {
+                        Icon(if (watched) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, if (watched) "Gezien" else "Markeer als gezien", tint = if (watched) BrandColors.Amber else BrandColors.Text)
                     }
                     IconButton(onClick = { share(context, item.title, "https://schatkamer.beeldengeluid.nl/programma/$programId") }) {
                         Icon(Icons.Rounded.Share, "Delen", tint = BrandColors.Text)
@@ -360,6 +401,7 @@ fun ProgramScreen(
         }
         TopActions(onBack)
     }
+    if (addToList && item.title.isNotBlank()) AddToListSheet(item, library) { addToList = false }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -421,22 +463,13 @@ fun BrowseScreen(viewModel: BrowseViewModel, spec: BrowseSpec, onOpen: (Schatkam
         ) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Terug") }
             Column(Modifier.weight(1f)) {
-                Text(
-                    when {
-                        spec.person != null -> "PERSOON"
-                        spec.broadcaster != null -> "OMROEP"
-                        spec.genre != null -> "GENRE"
-                        spec.decade != null -> "PERIODE"
-                        else -> "ONDERWERP"
-                    },
-                    style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber
-                )
+                Text(spec.kindLabel, style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber)
                 Text(spec.title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             CastButton()
         }
         LazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
-            resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry)
+            resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry, lockBroadcaster = spec.broadcaster != null)
         }
     }
 }

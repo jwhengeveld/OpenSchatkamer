@@ -33,7 +33,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import nl.openschatkamer.core.data.NotPlayableException
 import nl.openschatkamer.core.data.PlayableMedia
-import nl.openschatkamer.core.data.ProgressRepository
+import nl.openschatkamer.core.data.LibraryRepository
+import nl.openschatkamer.core.data.SchatkamerCatalogRepository
+import nl.openschatkamer.core.data.SortOrder
 import nl.openschatkamer.core.data.SchatkamerItem
 import nl.openschatkamer.core.data.SchatkamerVideoRepository
 import nl.openschatkamer.core.playback.CastPayload
@@ -55,7 +57,12 @@ data class PlaybackState(
     val castDevice: String? = null,
     val castVolume: Float = 0.5f,
     val castMuted: Boolean = false,
-    val subtitlesOn: Boolean = false
+    val subtitlesOn: Boolean = false,
+    val speed: Float = 1f,
+    /** De volgende aflevering van dezelfde serie, als die er is. */
+    val next: SchatkamerItem? = null,
+    /** Seconden tot de volgende aflevering vanzelf start; null = geen aftelling. */
+    val nextCountdown: Int? = null
 ) {
     val isCasting: Boolean get() = castDevice != null
     val hasMedia: Boolean get() = item != null
@@ -75,7 +82,8 @@ data class PlaybackState(
 class PlaybackManager(
     context: Context,
     private val video: SchatkamerVideoRepository,
-    private val progress: ProgressRepository,
+    private val progress: LibraryRepository,
+    private val catalog: SchatkamerCatalogRepository,
     private val scope: CoroutineScope
 ) {
     private val appContext = context.applicationContext
@@ -124,10 +132,62 @@ class PlaybackManager(
     }
 
     private fun start(media: PlayableMedia) {
-        _state.update { it.copy(media = media, durationMs = media.stream.clipDurationMs) }
+        _state.update { it.copy(media = media, durationMs = media.stream.clipDurationMs, next = null, nextCountdown = null) }
+        findNextEpisode(media)
+        applySpeed()
         if (_state.value.isCasting) loadOnCast(media, media.resumePositionMs) else loadLocally(media, playWhenReady = true)
         startTicking()
     }
+
+    /** Zoekt de aflevering die na deze komt (op uitzenddatum), voor "volgende aflevering". */
+    private fun findNextEpisode(media: PlayableMedia) {
+        val seriesId = media.seriesId ?: return
+        scope.launch {
+            val episodes = catalog.episodes(seriesId, sort = SortOrder.OLDEST).getOrNull()?.items.orEmpty()
+            val index = episodes.indexOfFirst { it.id == media.id }
+            val next = if (index >= 0) episodes.getOrNull(index + 1) else null
+            if (_state.value.media?.id == media.id) _state.update { it.copy(next = next) }
+        }
+    }
+
+    /** Aan het einde: na een korte aftelling de volgende aflevering. */
+    private fun onEnded() {
+        val next = _state.value.next ?: return
+        countdownJob?.cancel()
+        countdownJob = scope.launch {
+            for (seconds in 10 downTo 1) {
+                _state.update { it.copy(nextCountdown = seconds) }
+                delay(1000)
+            }
+            _state.update { it.copy(nextCountdown = null) }
+            play(next, fromStart = true)
+        }
+    }
+
+    fun playNextNow() {
+        val next = _state.value.next ?: return
+        countdownJob?.cancel()
+        _state.update { it.copy(nextCountdown = null) }
+        play(next, fromStart = true)
+    }
+
+    fun cancelNext() {
+        countdownJob?.cancel()
+        _state.update { it.copy(nextCountdown = null) }
+    }
+
+    fun setSpeed(speed: Float) {
+        _state.update { it.copy(speed = speed) }
+        applySpeed()
+    }
+
+    private fun applySpeed() {
+        val speed = _state.value.speed
+        _player.value?.setPlaybackSpeed(speed)
+        if (_state.value.isCasting) remote?.setPlaybackRate(speed.toDouble())
+    }
+
+    private var countdownJob: Job? = null
 
     fun retry() {
         val item = _state.value.item ?: return
@@ -225,7 +285,10 @@ class PlaybackManager(
                     durationMs = player.duration.takeIf { d -> d > 0 } ?: it.durationMs
                 )
             }
-            if (playbackState == Player.STATE_ENDED) saveProgress(force = true)
+            if (playbackState == Player.STATE_ENDED) {
+                saveProgress(force = true)
+                onEnded()
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -303,6 +366,7 @@ class PlaybackManager(
                     MediaStatus.IDLE_REASON_FINISHED -> {
                         _state.update { it.copy(isPlaying = false, isLoading = false) }
                         saveProgress(force = true)
+                        onEnded()
                     }
                     else -> _state.update { it.copy(isPlaying = false, isLoading = false) }
                 }
@@ -401,7 +465,7 @@ class PlaybackManager(
         if (!force && now - lastSavedAt < 10_000) return
         lastSavedAt = now
         val saved = s.media?.toItem()?.copy(description = item.description, date = item.date) ?: item
-        progress.save(saved.copy(id = item.id), s.positionMs, s.durationMs)
+        progress.saveProgress(saved.copy(id = item.id), s.positionMs, s.durationMs)
     }
 
     private fun describe(error: Throwable): String = when {

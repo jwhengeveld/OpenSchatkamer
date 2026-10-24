@@ -20,6 +20,7 @@ val buildValues = mapOf(
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -47,6 +48,10 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true
+            all { test ->
+                // Live contracttests tegen de echte site: ./gradlew :core:testDebugUnitTest -Plive
+                test.systemProperty("live", (project.findProperty("live") != null).toString())
+            }
         }
     }
 }
@@ -62,6 +67,11 @@ dependencies {
     // Gedeelde speleropbouw voor telefoon en tv (HLS, Widevine, clip).
     api(libs.androidx.media3.exoplayer)
     api(libs.androidx.media3.exoplayer.hls)
+
+    // Lokale opslag.
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     // Gedeelde ViewModels voor telefoon en tv.
     api(libs.androidx.lifecycle.viewmodel.ktx)

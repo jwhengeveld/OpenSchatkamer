@@ -2,6 +2,8 @@ package nl.openschatkamer.core.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import nl.openschatkamer.core.data.SiteFallbacks.firstString
+import nl.openschatkamer.core.data.SiteFallbacks.imageUrl
 
 /**
  * Leest de Schatkamer-website zoals een browser dat doet.
@@ -337,26 +339,26 @@ object SchatkamerParser {
         )
     }
 
-    private fun parseBffProgram(obj: JSONObject): SchatkamerItem? {
-        val id = SchatkamerText.clean(obj.optString("externalId")).ifBlank { SchatkamerText.clean(obj.optString("id")) }
+    internal fun parseBffProgram(obj: JSONObject): SchatkamerItem? {
+        val id = obj.firstString("externalId", "id", "programId")
         if (id.isBlank()) return null
         val series = obj.optJSONObject("series")
         val seriesTitle = series?.optString("title")?.let(SchatkamerText::prettyTitle)?.ifBlank { null }
             ?: SchatkamerText.prettyTitle(obj.optString("seriesTitle")).ifBlank { null }
-        val date = SchatkamerText.clean(obj.optString("date"))
-        val description = obj.optString("summary").ifBlank { obj.optString("description") }
+        val date = obj.firstString("date", "publishedAt", "broadcastDate").take(10)
+        val description = obj.firstString("summary", "description", "alternativeSummary")
         return SchatkamerItem(
             id = id,
-            title = SchatkamerText.episodeTitle(obj.optString("title"), seriesTitle, date, description),
+            title = SchatkamerText.episodeTitle(obj.firstString("title", "displayTitle", "name"), seriesTitle, date, description),
             kind = ItemKind.PROGRAM,
             subTitle = seriesTitle.orEmpty(),
             description = SchatkamerText.cleanDescription(description),
             date = date,
             mediaType = SchatkamerText.clean(obj.optString("mediaType")).ifBlank { "video" },
             broadcaster = SchatkamerText.clean(obj.optString("broadcaster")),
-            imageUrl = obj.optJSONObject("image")?.optString("url")?.let(SchatkamerText::clean).orEmpty(),
+            imageUrl = obj.imageUrl(),
             url = "${SchatkamerHttpClient.BASE_URL}/programma/$id",
-            seriesId = series?.optString("id")?.ifBlank { null },
+            seriesId = series?.firstString("id", "externalId")?.ifBlank { null },
             seriesTitle = seriesTitle,
             slug = SchatkamerText.clean(obj.optString("slug")).ifBlank { null },
             isPlayable = obj.optBoolean("isPlayable", true)

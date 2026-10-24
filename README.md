@@ -1,6 +1,6 @@
 # OpenSchatkamer — Android & Android TV
 
-Een **onofficiële** app om te kijken en luisteren in [De Schatkamer van Beeld & Geluid](https://schatkamer.beeldengeluid.nl/), voor telefoon/tablet en Android TV.
+Twee apps: **OpenSchatkamer** (telefoon/tablet) en **OpenSchatkamer TV** (Android TV / Google TV), elk met een eigen icoon. Een **onofficiële** app om te kijken en luisteren in [De Schatkamer van Beeld & Geluid](https://schatkamer.beeldengeluid.nl/), voor telefoon/tablet en Android TV.
 
 > OpenSchatkamer is niet verbonden aan Beeld & Geluid. Alle uitzendingen komen uit De Schatkamer en zijn eigendom van Beeld & Geluid en de omroepen. De app gebruikt alleen wat de website zelf openbaar aan elke browser geeft.
 
@@ -38,6 +38,40 @@ Zoals bij de Family7-app: de app leest de website zoals een browser dat doet, sl
 - Alleen het programma zelf wordt getoond: de archiefband wordt geknipt op `start`/`end` van de site.
 - Een handtekening verloopt na ongeveer 22 uur. De app haalt streams pas bij het afspelen op en ververst ze automatisch, ook na een 403.
 - Voortgang wordt bewaard ("Verder kijken", hervatten), lokaal op het toestel.
+
+## Bewaren en je Schatkamer-account
+
+- **Zonder account** staat alles op het toestel (Room-database): Mijn lijst, eigen lijsten, gevolgde series met "nieuwe afleveringen", kijkvoortgang, "Gezien" en kijkgeschiedenis. Er is een back-up via export/import (JSON).
+- **Met je Schatkamer-account** (zelfde inlog als de website: Amazon Cognito met SRP, dus het wachtwoord gaat nooit leesbaar over de lijn en wordt niet bewaard) gebruikt de app de gebruikersdienst van de site (`/api/user/bff`):
+  - je lijsten (aanmaken, hernoemen, verwijderen, items toevoegen en weghalen);
+  - favorieten (een lijst "Favorieten");
+  - "Mijn series" (volgen).
+
+  Alles is ook zichtbaar op schatkamer.beeldengeluid.nl. Het verversingstoken staat versleuteld in de Android Keystore. Wordt er een code gevraagd (sms, e-mail of authenticator), dan kun je die invullen.
+- Kijkvoortgang en geschiedenis blijven altijd lokaal; de website heeft daar geen opslag voor.
+
+## Robuust als de site verandert
+
+Elke bron heeft een terugvalroute; `SourceHealth` houdt bij welke route werkt (verborgen diagnosescherm: tik 7× op het versienummer in Mijn lijst).
+
+| Gegeven | Primair | Terugval |
+|---|---|---|
+| Startpagina | RSC-modules | HTML-kaarten (links + koppen) → eigen startpagina uit de zoekdienst → snapshot op schijf |
+| Stream | `programStream` | ondertekend `master.m3u8`-adres los uit de pagina |
+| Zoeken | JSON-dienst, tolerant voor hernoemde velden | server-gerenderde zoekpagina |
+| Spelerinstellingen | `window.__CONFIG__` | opgeslagen → ingebouwd |
+
+- `./gradlew :core:testDebugUnitTest -Plive` draait contracttests tegen de echte site.
+- De GitHub Action `site-contract.yml` doet dat wekelijks en maakt een issue aan als de site is veranderd.
+
+**Nieuwe content** komt binnen door te verversen bij het openen en bij terugkeer naar de app. Nieuwe kaarten krijgen het label "Nieuw" en gevolgde series tonen nieuwe afleveringen. `robots.txt` van de site staat geen crawlers toe; de app doet daarom niets op de achtergrond en haalt alleen op wat je bekijkt, zoals een browser.
+
+## Native
+
+- **Systeem**: het systeem-opstartscherm, predictive back, themed icons (Android 13+), deelmenu, mediasessie en -melding, PiP, haptics bij lang indrukken.
+- **Telefoon**: launcher-snelkoppelingen (Zoeken, Mijn lijst), deep links (`openschatkamer://…` en links naar de site via "Openen met") en spraakzoeken.
+- **Speler**: storyboard-miniaturen bij het spoelen, afspeelsnelheid en automatisch de volgende aflevering.
+- **TV**: verder kijken in de rij "Verder kijken" op het startscherm van Google TV (Watch Next), een achtergrond die meebeweegt met de focus, focusherstel per rij en een actiemenu via lang OK.
 
 ## Chromecast
 

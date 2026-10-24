@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import nl.openschatkamer.core.data.Broadcaster
 import nl.openschatkamer.core.data.Decade
@@ -318,6 +319,8 @@ class StoryViewModel(private val catalog: SchatkamerCatalogRepository, private v
 data class DiscoverData(
     val broadcasters: List<Broadcaster> = SchatkamerCatalogRepository.CURRENT_BROADCASTERS,
     val genres: List<FacetItem> = emptyList(),
+    val subjects: List<FacetItem> = emptyList(),
+    val people: List<SchatkamerItem> = emptyList(),
     val decades: List<Decade> = Decade.entries.toList()
 )
 
@@ -330,11 +333,112 @@ class DiscoverViewModel(private val catalog: SchatkamerCatalogRepository) : View
             var attempt = 0
             while (attempt++ < 3) {
                 val broadcasters = catalog.broadcasters()
-                val genres = catalog.genres()
-                _data.value = DiscoverData(broadcasters = broadcasters, genres = genres)
+                val facets = catalog.search(SearchFilter(), limit = 1).getOrNull()?.facets
+                val people = catalog.cachedHome()?.rows?.firstOrNull { it.kind == nl.openschatkamer.core.data.ItemKind.PERSON }?.items.orEmpty()
+                val genres = facets?.genres.orEmpty()
+                _data.value = DiscoverData(broadcasters = broadcasters, genres = genres, subjects = facets?.subjects.orEmpty(), people = people)
                 if (genres.isNotEmpty()) break
                 delay(3_000L * attempt)
             }
         }
     }
+}
+
+// ------------------------------------------------------- terug in de tijd
+
+/**
+ * "Precies 50 jaar geleden deze week": uitzendingen uit dezelfde week, toen.
+ * Twee kleine verzoeken; leeg als er die week niets is.
+ */
+class TimeTravelViewModel(private val catalog: SchatkamerCatalogRepository) : ViewModel() {
+
+    data class Row(val yearsAgo: Int, val spec: BrowseSpec, val items: List<SchatkamerItem>)
+
+    private val _rows = MutableStateFlow<List<Row>>(emptyList())
+    val rows: StateFlow<List<Row>> = _rows.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            val today = java.util.Calendar.getInstance()
+            _rows.value = listOf(50, 25, 40).mapNotNull { years ->
+                val from = (today.clone() as java.util.Calendar).apply { add(java.util.Calendar.YEAR, -years); add(java.util.Calendar.DAY_OF_YEAR, -3) }
+                val to = (today.clone() as java.util.Calendar).apply { add(java.util.Calendar.YEAR, -years); add(java.util.Calendar.DAY_OF_YEAR, 3) }
+                val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                val spec = BrowseSpec(
+                    title = "Deze week, $years jaar geleden",
+                    dateFrom = fmt.format(from.time),
+                    dateTo = fmt.format(to.time)
+                )
+                catalog.search(spec.toFilter(catalog), limit = 20).getOrNull()?.items
+                    ?.takeIf { it.size >= 3 }
+                    ?.let { Row(years, spec, it) }
+            }.take(2)
+        }
+    }
+}
+
+// --------------------------------------------------------------- lijsten
+
+class ListViewModel(private val library: nl.openschatkamer.core.data.UserLibrary, private val key: String) : ViewModel() {
+
+    private val _items = MutableStateFlow<Load<List<SchatkamerItem>>>(Load.Loading)
+    val items: StateFlow<Load<List<SchatkamerItem>>> = _items.asStateFlow()
+
+    val list: StateFlow<nl.openschatkamer.core.data.AnyList?> =
+        kotlinx.coroutines.flow.combine(library.lists, kotlinx.coroutines.flow.flowOf(key)) { lists, k -> lists.firstOrNull { it.key == k } }
+            .kotlinxStateIn(viewModelScope, null)
+
+    init {
+        viewModelScope.launch { list.collect { l -> if (l != null) load(l) } }
+    }
+
+    private suspend fun load(list: nl.openschatkamer.core.data.AnyList) {
+        library.listItems(list)
+            .onSuccess { _items.value = Load.Ready(it) }
+            .onFailure { e -> if (_items.value !is Load.Ready) _items.value = Load.Failed(friendlyError(e)) }
+    }
+
+    fun reload() = viewModelScope.launch { list.value?.let { load(it) } }
+}
+
+private fun <T> kotlinx.coroutines.flow.Flow<T>.kotlinxStateIn(scope: kotlinx.coroutines.CoroutineScope, initial: T): StateFlow<T> =
+    stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, initial)
+
+// --------------------------------------------------------------- account
+
+class AccountViewModel(private val account: nl.openschatkamer.core.auth.SchatkamerAccount) : ViewModel() {
+
+    data class State(
+        val busy: Boolean = false,
+        val error: String? = null,
+        val pendingCode: nl.openschatkamer.core.auth.SignInResult.NeedsCode? = null
+    )
+
+    private val _state = MutableStateFlow(State())
+    val state: StateFlow<State> = _state.asStateFlow()
+    val user = account.account
+
+    fun signIn(email: String, password: String) {
+        if (_state.value.busy) return
+        _state.value = State(busy = true)
+        viewModelScope.launch { handle(account.signIn(email, password)) }
+    }
+
+    fun confirmCode(code: String) {
+        val pending = _state.value.pendingCode ?: return
+        _state.value = _state.value.copy(busy = true, error = null)
+        viewModelScope.launch { handle(account.confirmCode(pending, code)) }
+    }
+
+    private fun handle(result: nl.openschatkamer.core.auth.SignInResult) {
+        _state.value = when (result) {
+            is nl.openschatkamer.core.auth.SignInResult.SignedIn -> State()
+            is nl.openschatkamer.core.auth.SignInResult.NeedsCode -> State(pendingCode = result)
+            is nl.openschatkamer.core.auth.SignInResult.Failed -> State(error = result.message, pendingCode = _state.value.pendingCode)
+        }
+    }
+
+    fun cancelCode() { _state.value = State() }
+
+    fun signOut() = account.signOut()
 }

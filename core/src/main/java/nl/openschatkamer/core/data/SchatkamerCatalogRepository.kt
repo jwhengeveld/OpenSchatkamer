@@ -2,6 +2,9 @@ package nl.openschatkamer.core.data
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /** Een publieke omroep om op te bladeren, met de namen waaronder het archief hem kent. */
@@ -39,12 +42,68 @@ class SchatkamerCatalogRepository(context: Context) {
     suspend fun getHome(forceRefresh: Boolean = false): Result<SchatkamerHome> = withContext(Dispatchers.IO) {
         if (!forceRefresh) homeCache.fresh()?.let { return@withContext Result.success(it) }
         runCatching {
-            val home = SchatkamerParser.parseHome(http.getHtml(SchatkamerHttpClient.BASE_URL, fresh = forceRefresh))
-            check(home.rows.isNotEmpty()) { "De startpagina van de Schatkamer bevatte geen rijen." }
-            homeCache.put(home)
-            snapshots.writeHome(home)
-            home
-        }.recoverCatching { error -> homeCache.snapshot() ?: throw error }
+            val previous = homeCache.snapshot() ?: snapshots.readHome()
+            val home = loadHome(forceRefresh)
+            // Wat er sinds de vorige keer bij is gekomen, krijgt een "Nieuw"-label.
+            val known = previous?.rows?.flatMap { r -> r.items.map { it.kind.name + it.id } }?.toSet()
+            val withNew = if (known.isNullOrEmpty()) home else home.copy(
+                newIds = home.rows.flatMap { r -> r.items }.filter { (it.kind.name + it.id) !in known }
+                    .map { it.kind.name + it.id }.toSet()
+                    // Niets veranderd: de labels van de vorige wijziging blijven staan.
+                    .ifEmpty { previous.newIds }
+            )
+            homeCache.put(withNew)
+            snapshots.writeHome(withNew)
+            withNew
+        }.recoverCatching { error ->
+            SourceHealth.failed(SourceHealth.Source.HOME, error)
+            homeCache.snapshot() ?: snapshots.readHome() ?: throw error
+        }
+    }
+
+    /**
+     * De startpagina, met terugval: eerst de gegevens die de site aan haar
+     * eigen pagina meegeeft, dan de kaarten in de HTML zelf, en als de site
+     * onherkenbaar is veranderd een eigen startpagina uit de zoekdienst.
+     */
+    private suspend fun loadHome(fresh: Boolean): SchatkamerHome {
+        val html = runCatching { http.getHtml(SchatkamerHttpClient.BASE_URL, fresh = fresh) }.getOrNull()
+        if (html != null) {
+            SchatkamerParser.parseHome(html).takeIf { it.rows.size >= 3 }?.let {
+                SourceHealth.ok(SourceHealth.Source.HOME)
+                return it
+            }
+            SiteFallbacks.homeFromHtml(html).takeIf { it.rows.size >= 3 }?.let {
+                SourceHealth.fallback(SourceHealth.Source.HOME, "rijen gelezen uit de HTML-kaarten")
+                return it
+            }
+        }
+        val synthetic = syntheticHome()
+        check(synthetic.rows.isNotEmpty()) { "De Schatkamer is niet bereikbaar." }
+        SourceHealth.fallback(SourceHealth.Source.HOME, "eigen startpagina uit de zoekdienst")
+        return synthetic
+    }
+
+    /** Een startpagina zonder redactie: nieuwste uitzendingen, tijdperken en genres. */
+    private suspend fun syntheticHome(): SchatkamerHome = coroutineScope {
+        val specs = listOf(
+            "Nieuwste in het archief" to SearchFilter(sort = SortOrder.NEWEST),
+            "De jaren '60" to SearchFilter(decade = Decade.D1960),
+            "De jaren '70" to SearchFilter(decade = Decade.D1970),
+            "De jaren '80" to SearchFilter(decade = Decade.D1980),
+            "Satire en humor" to SearchFilter(genres = setOf("satire")),
+            "Muziek" to SearchFilter(genres = setOf("muziekprogramma")),
+            "Documentaires" to SearchFilter(genres = setOf("documentaire")),
+            "Om naar te luisteren" to SearchFilter(material = "audio", sort = SortOrder.NEWEST)
+        )
+        val rows = specs.mapIndexed { i, (title, filter) ->
+            async {
+                search(filter, limit = 16).getOrNull()?.items?.takeIf { it.isNotEmpty() }?.let {
+                    SchatkamerRow(id = "synthetic-$i", title = title, items = it)
+                }
+            }
+        }.awaitAll().filterNotNull()
+        SchatkamerHome(rows)
     }
 
     // ---------------------------------------------------------------- zoeken
@@ -58,7 +117,15 @@ class SchatkamerCatalogRepository(context: Context) {
         runCatching {
             val url = http.url("/api/media/bff/search", filter.toQueryParams(offset, limit))
             SchatkamerParser.parseBffSearch(http.getJson(url, fresh = forceRefresh), filter.query, offset)
-        }
+                .also { SourceHealth.ok(SourceHealth.Source.SEARCH) }
+        }.recoverCatching { error ->
+            // Zoekdienst onbereikbaar of veranderd: de server-gerenderde zoekpagina (eerste pagina).
+            if (offset > 0 || filter.query.isBlank()) throw error
+            val html = http.getHtml(http.url("/zoeken", listOf("q" to filter.query)))
+            SiteFallbacks.searchFromHtml(html, filter.query).takeIf { it.items.isNotEmpty() }
+                ?.also { SourceHealth.fallback(SourceHealth.Source.SEARCH, "resultaten van de zoekpagina") }
+                ?: throw error
+        }.onFailure { SourceHealth.failed(SourceHealth.Source.SEARCH, it) }
     }
 
     /**
@@ -134,7 +201,7 @@ class SchatkamerCatalogRepository(context: Context) {
     }
 
     companion object {
-        const val PAGE_SIZE = 24
+        const val PAGE_SIZE = 30
 
         private const val CMS = "https://schatkamer.beeldengeluid.nl/assets/cms"
 

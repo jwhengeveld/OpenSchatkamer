@@ -54,6 +54,8 @@ import nl.openschatkamer.core.data.ItemKind
 import nl.openschatkamer.core.data.SchatkamerHome
 import nl.openschatkamer.core.data.SchatkamerItem
 import nl.openschatkamer.core.data.WatchProgress
+import nl.openschatkamer.core.ui.BrowseSpec
+import nl.openschatkamer.core.ui.TimeTravelViewModel
 import nl.openschatkamer.mobile.cast.CastButton
 import nl.openschatkamer.core.ui.HomeViewModel
 import nl.openschatkamer.core.ui.Load
@@ -70,8 +72,10 @@ import nl.openschatkamer.mobile.ui.components.metaLine
 fun HomeScreen(
     viewModel: HomeViewModel,
     continueWatching: List<WatchProgress>,
+    timeTravel: List<TimeTravelViewModel.Row>,
     onOpen: (SchatkamerItem) -> Unit,
     onPlay: (SchatkamerItem) -> Unit,
+    onBrowse: (BrowseSpec) -> Unit,
     contentPadding: PaddingValues
 ) {
     val home by viewModel.home.collectAsState()
@@ -83,7 +87,7 @@ fun HomeScreen(
             when (val h = home) {
                 Load.Loading -> item { SkeletonRows() }
                 is Load.Failed -> item { ErrorState(h.message, viewModel::refresh) }
-                is Load.Ready -> homeContent(h.data, continueWatching, onOpen, onPlay)
+                is Load.Ready -> homeContent(h.data, continueWatching, timeTravel, onOpen, onPlay, onBrowse)
             }
             item {
                 Text(
@@ -100,8 +104,10 @@ fun HomeScreen(
 private fun androidx.compose.foundation.lazy.LazyListScope.homeContent(
     home: SchatkamerHome,
     continueWatching: List<WatchProgress>,
+    timeTravel: List<TimeTravelViewModel.Row>,
     onOpen: (SchatkamerItem) -> Unit,
-    onPlay: (SchatkamerItem) -> Unit
+    onPlay: (SchatkamerItem) -> Unit,
+    onBrowse: (BrowseSpec) -> Unit
 ) {
     if (home.heroItems.isNotEmpty()) item { Hero(home.heroItems, onOpen) }
     if (continueWatching.isNotEmpty()) {
@@ -114,8 +120,17 @@ private fun androidx.compose.foundation.lazy.LazyListScope.homeContent(
             }
         }
     }
-    home.browseRows.forEach { row ->
-        item(key = row.id) { CatalogRow(row, onOpen) }
+    // De redactierijen van de site, met na de eerste twee "terug in de tijd".
+    home.browseRows.forEachIndexed { index, row ->
+        item(key = row.id, contentType = "row") { CatalogRow(row, onOpen) }
+        if (index == 1) timeTravel.forEach { t ->
+            item(key = "tt-${t.yearsAgo}", contentType = "row") {
+                SectionHeader(t.spec.title, actionLabel = "Meer", onAction = { onBrowse(t.spec) })
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(t.items, key = { it.id }) { ProgramCard(it, { onOpen(it) }) }
+                }
+            }
+        }
     }
 }
 
@@ -138,6 +153,9 @@ private fun Hero(items: List<SchatkamerItem>, onOpen: (SchatkamerItem) -> Unit) 
         delay(7_000)
         if (items.size > 1 && !pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % items.size)
     }
+    androidx.compose.foundation.layout.BoxWithConstraints {
+    // Staand 4:5 op een telefoon, maar nooit hoger dan 520dp (tablet, liggend).
+    val cardHeight = minOf((maxWidth - 32.dp) * 1.25f, 520.dp)
     Column {
         HorizontalPager(
             state = pager,
@@ -149,8 +167,7 @@ private fun Hero(items: List<SchatkamerItem>, onOpen: (SchatkamerItem) -> Unit) 
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 520.dp)
-                    .aspectRatio(4f / 5f, matchHeightConstraintsFirst = true)
+                    .height(cardHeight)
                     .clip(MaterialTheme.shapes.large)
                     .clickable { onOpen(item) }
             ) {
@@ -184,5 +201,6 @@ private fun Hero(items: List<SchatkamerItem>, onOpen: (SchatkamerItem) -> Unit) 
                 )
             }
         }
+    }
     }
 }

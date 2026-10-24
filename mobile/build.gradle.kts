@@ -22,8 +22,8 @@ android {
         applicationId = "nl.openschatkamer.mobile"
                 minSdk = 24
         targetSdk = 36
-        versionCode = 20
-        versionName = "2.0.0"
+        versionCode = 21
+        versionName = "2.1.0"
     }
 
     signingConfigs {
@@ -72,6 +72,7 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":brand"))
+    implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.core.splashscreen)
 
     implementation(libs.androidx.core.ktx)

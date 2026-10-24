@@ -12,11 +12,11 @@ import java.io.File
  */
 class CatalogSnapshotStore(context: Context) {
 
-    private val dir = File(context.applicationContext.filesDir, "catalog_snapshots_v3").apply { mkdirs() }
+    private val dir = File(context.applicationContext.filesDir, "catalog_snapshots_v4").apply { mkdirs() }
 
     init {
         // Opruimen van snapshots uit eerdere versies met een ander formaat.
-        listOf("catalog_snapshots", "catalog_snapshots_v2").forEach {
+        listOf("catalog_snapshots", "catalog_snapshots_v2", "catalog_snapshots_v3").forEach {
             File(context.applicationContext.filesDir, it).deleteRecursively()
         }
     }
@@ -43,7 +43,9 @@ class CatalogSnapshotStore(context: Context) {
     }
 
     companion object {
-        fun encodeHome(home: SchatkamerHome): JSONObject = JSONObject().put(
+        fun encodeHome(home: SchatkamerHome): JSONObject = JSONObject()
+            .put("newIds", JSONArray(home.newIds.toList()))
+            .put(
             "rows",
             JSONArray().apply {
                 home.rows.forEach { row ->
@@ -59,8 +61,10 @@ class CatalogSnapshotStore(context: Context) {
         )
 
         fun decodeHome(json: String): SchatkamerHome {
-            val rows = JSONObject(json).getJSONArray("rows")
-            return SchatkamerHome((0 until rows.length()).map { i ->
+            val root = JSONObject(json)
+            val rows = root.getJSONArray("rows")
+            val newIds = root.optJSONArray("newIds")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty()
+            return SchatkamerHome(newIds = newIds, rows = (0 until rows.length()).map { i ->
                 val r = rows.getJSONObject(i)
                 val items = r.getJSONArray("items")
                 SchatkamerRow(

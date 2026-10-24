@@ -38,6 +38,18 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import nl.openschatkamer.core.ui.AccountViewModel
+import nl.openschatkamer.core.ui.ListViewModel
+import nl.openschatkamer.core.ui.TimeTravelViewModel
+import nl.openschatkamer.mobile.ui.components.ItemActionsSheet
+import nl.openschatkamer.mobile.ui.components.ItemStates
+import nl.openschatkamer.mobile.ui.components.LocalItemActions
+import nl.openschatkamer.mobile.ui.components.LocalItemStates
+import nl.openschatkamer.mobile.ui.screens.AccountScreen
+import nl.openschatkamer.mobile.ui.screens.DiagnosticsScreen
+import nl.openschatkamer.mobile.ui.screens.HistoryScreen
+import nl.openschatkamer.mobile.ui.screens.ListScreen
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -62,9 +74,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import kotlinx.coroutines.flow.MutableStateFlow
 import nl.openschatkamer.brand.BrandColors
-import nl.openschatkamer.brand.BrandSplash
 import nl.openschatkamer.core.data.ItemKind
 import nl.openschatkamer.core.data.SchatkamerItem
 import nl.openschatkamer.mobile.cast.CastAvailability
@@ -100,14 +112,19 @@ class MainActivity : AppCompatActivity() {
     private val inPip = MutableStateFlow(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splash = installSplashScreen()
+        val started = System.currentTimeMillis()
+        splash.setKeepOnScreenCondition {
+            app.catalog.cachedHome() == null && System.currentTimeMillis() - started < 2_500
+        }
         enableEdgeToEdge(
             statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         super.onCreate(savedInstanceState)
         CastAvailability.discoverWhileStarted(this)
-        handleIntent(intent)
+        // Een link bij het opstarten verwerkt Navigation zelf; alleen "open speler" hier.
+        if (intent?.action == PlaybackManager.ACTION_OPEN_PLAYER) playerOpen.value = true
 
         setContent {
             OpenSchatkamerTheme {
@@ -121,8 +138,12 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
     }
 
+    /** Links die binnenkomen terwijl de app al open is (snelkoppeling, gedeelde link). */
+    private val pendingLink = kotlinx.coroutines.flow.MutableStateFlow<Intent?>(null)
+
     private fun handleIntent(intent: Intent?) {
         if (intent?.action == PlaybackManager.ACTION_OPEN_PLAYER) playerOpen.value = true
+        else if (intent?.action == Intent.ACTION_VIEW && intent.data != null) pendingLink.value = intent
     }
 
     /** Thuisknop tijdens een video: verder in een zwevend venster. */
@@ -142,29 +163,50 @@ class MainActivity : AppCompatActivity() {
         inPip.value = isInPictureInPictureMode
     }
 
+    override fun onStart() {
+        super.onStart()
+        app.onForeground()
+    }
+
     @Composable
     private fun AppRoot() {
         val playback = app.playback
+        val library = app.library
         val state by playback.state.collectAsState()
         val player by playback.player.collectAsState()
         val showPlayer by playerOpen.collectAsState()
         val pip by inPip.collectAsState()
-        val favorites by app.favorites.favorites.collectAsState()
-        val progressEntries by app.progress.entries.collectAsState()
-        val continueWatching = remember(progressEntries) { app.progress.continueWatching }
+        val history by library.local.history.collectAsState()
+        val continueWatching by library.local.continueWatching.collectAsState()
         val nav = rememberNavController()
+        val link by pendingLink.collectAsState()
+        LaunchedEffect(link) {
+            link?.let { nav.handleDeepLink(it); pendingLink.value = null }
+        }
 
         val homeViewModel: HomeViewModel = viewModel { HomeViewModel(app.catalog) }
+        val timeTravelViewModel: TimeTravelViewModel = viewModel { TimeTravelViewModel(app.catalog) }
+        val timeTravel by timeTravelViewModel.rows.collectAsState()
         val homeState by homeViewModel.home.collectAsState()
-        var splashDone by rememberSaveable { mutableStateOf(false) }
-        var splashTimedOut by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) { kotlinx.coroutines.delay(4_000); splashTimedOut = true }
+        // Met een bewaarde startpagina is de app er meteen; alleen bij de allereerste start wachten.
 
         val play: (SchatkamerItem, Boolean) -> Unit = { item, fromStart ->
             playback.play(item, fromStart)
             playerOpen.value = true
         }
         val actions = remember(playback) { playbackActions(playback) }
+        var actionItem by remember { mutableStateOf<SchatkamerItem?>(null) }
+
+        // Kaartstatus voor alle schermen: nieuw, voortgang en gezien.
+        val home = (homeState as? Load.Ready)?.data
+        val itemStates = remember(history, home) {
+            val byId = history.associateBy { it.item.id }
+            object : ItemStates {
+                override fun isNew(item: SchatkamerItem) = home?.isNew(item) == true
+                override fun progress(item: SchatkamerItem) = byId[item.id]?.takeIf { !it.isFinished && it.positionMs > 15_000 }?.fraction
+                override fun watched(item: SchatkamerItem) = byId[item.id]?.isFinished == true
+            }
+        }
 
         // Video draait mee met het toestel; zonder speler volgt de app gewoon het systeem.
         val videoFullscreen = showPlayer && state.hasMedia && !state.isCasting && state.media?.isAudio != true
@@ -180,6 +222,7 @@ class MainActivity : AppCompatActivity() {
             } else controller.show(WindowInsetsCompat.Type.systemBars())
         }
 
+        CompositionLocalProvider(LocalItemActions provides { actionItem = it }, LocalItemStates provides itemStates) {
         Box(Modifier.fillMaxSize().background(BrandColors.Ink)) {
             if (pip) {
                 PlayerScreen(state, player, actions, isInPip = true, onClose = {}, onOpenSeries = {})
@@ -196,43 +239,63 @@ class MainActivity : AppCompatActivity() {
             }) { padding ->
                 NavHost(nav, startDestination = Routes.HOME) {
                     composable(Routes.HOME) {
-                        HomeScreen(homeViewModel, continueWatching, onOpen = { nav.open(it) }, onPlay = { play(it, false) }, contentPadding = padding)
+                        HomeScreen(
+                            homeViewModel, continueWatching, timeTravel,
+                            onOpen = { nav.open(it) }, onPlay = { play(it, false) },
+                            onBrowse = { nav.navigate(Routes.browse(it)) }, contentPadding = padding
+                        )
                     }
-                    composable(Routes.SEARCH) {
+                    composable(Routes.SEARCH, deepLinks = listOf(navDeepLink { uriPattern = "openschatkamer://search" })) {
                         val vm: SearchViewModel = viewModel { SearchViewModel(app.catalog, applicationContext) }
-                        SearchScreen(vm, onOpen = { nav.open(it) }, contentPadding = padding)
+                        SearchScreen(vm, onOpen = { nav.open(it) }, onBrowse = { nav.navigate(Routes.browse(it)) }, contentPadding = padding)
                     }
                     composable(Routes.DISCOVER) {
                         val vm: DiscoverViewModel = viewModel { DiscoverViewModel(app.catalog) }
                         DiscoverScreen(vm, onBrowse = { nav.navigate(Routes.browse(it)) }, contentPadding = padding)
                     }
-                    composable(Routes.MY_LIST) {
+                    composable(Routes.MY_LIST, deepLinks = listOf(navDeepLink { uriPattern = "openschatkamer://mylist" })) {
                         MyListScreen(
-                            favorites, continueWatching,
+                            library,
                             onOpen = { nav.open(it) }, onPlay = { play(it, false) },
-                            onRemoveFavorite = app.favorites::removeFavorite, onRemoveProgress = app.progress::remove,
+                            onOpenList = { nav.navigate(Routes.list(it.key)) },
+                            onAccount = { nav.navigate(Routes.ACCOUNT) },
+                            onHistory = { nav.navigate(Routes.HISTORY) },
+                            onDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) },
                             contentPadding = padding
                         )
                     }
-                    composable(Routes.SERIES, listOf(navArgument("id") { type = NavType.StringType })) { entry ->
+                    composable(
+                        Routes.SERIES, listOf(navArgument("id") { type = NavType.StringType }),
+                        deepLinks = listOf(
+                            navDeepLink { uriPattern = "openschatkamer://series/{id}" },
+                            navDeepLink { uriPattern = "https://schatkamer.beeldengeluid.nl/serie/{id}" },
+                            navDeepLink { uriPattern = "https://schatkamer.beeldengeluid.nl/serie/{id}/{slug}" }
+                        )
+                    ) { entry ->
                         val id = entry.arguments?.getString("id").orEmpty()
                         val vm: SeriesViewModel = viewModel { SeriesViewModel(app.catalog, id) }
                         SeriesScreen(
-                            vm, id, isFavorite = favorites.any { it.id == id },
-                            onToggleFavorite = { app.favorites.toggleFavorite(it) },
-                            progressOf = app.progress::progressOf,
+                            vm, id, library,
                             onOpen = { nav.open(it) }, onPlay = { play(it, false) },
                             onBrowse = { nav.navigate(Routes.browse(it)) },
                             onBack = { nav.popBackStack() }, contentPadding = padding
                         )
                     }
-                    composable(Routes.PROGRAM, listOf(navArgument("id") { type = NavType.StringType })) { entry ->
+                    composable(
+                        Routes.PROGRAM, listOf(navArgument("id") { type = NavType.StringType }),
+                        deepLinks = listOf(
+                            navDeepLink { uriPattern = "openschatkamer://program/{id}" },
+                            navDeepLink { uriPattern = "https://schatkamer.beeldengeluid.nl/programma/{id}" },
+                            navDeepLink { uriPattern = "https://schatkamer.beeldengeluid.nl/programma/{id}/{slug}" },
+                            navDeepLink { uriPattern = "https://schatkamer.beeldengeluid.nl/serie/{sid}/{sslug}/aflevering/{id}" }
+                        )
+                    ) { entry ->
                         val id = entry.arguments?.getString("id").orEmpty()
                         val vm: ProgramViewModel = viewModel { ProgramViewModel(app.video, app.catalog, id) }
+                        // Alvast de stream ophalen: afspelen begint dan meteen.
+                        LaunchedEffect(id) { app.video.resolveStream(id) }
                         ProgramScreen(
-                            vm, id, isFavorite = favorites.any { it.id == id },
-                            progress = progressEntries.firstOrNull { it.item.id == id },
-                            onToggleFavorite = { app.favorites.toggleFavorite(it) },
+                            vm, id, library,
                             onPlay = play, onOpen = { nav.open(it) },
                             onBrowse = { nav.navigate(Routes.browse(it)) },
                             onBack = { nav.popBackStack() }, contentPadding = padding
@@ -248,6 +311,24 @@ class MainActivity : AppCompatActivity() {
                         val vm: BrowseViewModel = viewModel { BrowseViewModel(app.catalog, spec.toFilter(app.catalog)) }
                         BrowseScreen(vm, spec, onOpen = { nav.open(it) }, onBack = { nav.popBackStack() }, contentPadding = padding)
                     }
+                    composable(Routes.LIST, listOf(navArgument("key") { type = NavType.StringType })) { entry ->
+                        val key = entry.arguments?.getString("key").orEmpty()
+                        val favorites by library.favorites.collectAsState()
+                        val vm: ListViewModel? = if (key == "local:favorites") null else viewModel { ListViewModel(library, key) }
+                        ListScreen(
+                            vm, favorites.filter { it.kind != ItemKind.SERIES }, library,
+                            onOpen = { nav.open(it) }, onPlay = { play(it, false) },
+                            onBack = { nav.popBackStack() }, contentPadding = padding
+                        )
+                    }
+                    composable(Routes.ACCOUNT) {
+                        val vm: AccountViewModel = viewModel { AccountViewModel(app.account) }
+                        AccountScreen(vm, library, onBack = { nav.popBackStack() })
+                    }
+                    composable(Routes.HISTORY) {
+                        HistoryScreen(library, onOpen = { nav.open(it) }, onBack = { nav.popBackStack() }, contentPadding = padding)
+                    }
+                    composable(Routes.DIAGNOSTICS) { DiagnosticsScreen(onBack = { nav.popBackStack() }) }
                 }
             }
 
@@ -264,12 +345,11 @@ class MainActivity : AppCompatActivity() {
                 )
             }
 
-            if (!splashDone) {
-                BrandSplash(
-                    ready = homeState !is Load.Loading || splashTimedOut,
-                    onFinished = { splashDone = true }
-                )
+            actionItem?.let { item ->
+                ItemActionsSheet(item, library, onDismiss = { actionItem = null }, onOpenSeries = { nav.open(it) })
             }
+
+        }
         }
     }
 
@@ -282,6 +362,9 @@ class MainActivity : AppCompatActivity() {
         override fun stopCasting() = p.stopCasting()
         override fun setCastVolume(v: Float) = p.setCastVolume(v)
         override fun toggleCastMute() = p.toggleCastMute()
+        override fun setSpeed(speed: Float) = p.setSpeed(speed)
+        override fun playNext() = p.playNextNow()
+        override fun cancelNext() = p.cancelNext()
     }
 }
 
@@ -304,10 +387,13 @@ private fun Shell(
 ) {
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
+    val activeTab = TABS.firstOrNull { it.route == current }?.route
+        ?: TABS.lastOrNull { tab -> tab.route != Routes.HOME && nav.currentBackStack.value.any { it.destination.route == tab.route } }?.route
+        ?: Routes.HOME
     val select: (String) -> Unit = { route ->
-        if (route == current) {
-            // Nogmaals op het tabblad tikken: terug naar het begin van dat tabblad.
-            nav.popBackStack(route, inclusive = false)
+        if (route == activeTab) {
+            // Nogmaals op het actieve tabblad: terug naar het begin daarvan.
+            if (!nav.popBackStack(route, inclusive = false)) nav.navigate(route) { launchSingleTop = true }
         } else {
             nav.navigate(route) {
                 popUpTo(Routes.HOME) { saveState = true }
@@ -316,9 +402,6 @@ private fun Shell(
             }
         }
     }
-    val activeTab = TABS.firstOrNull { it.route == current }?.route
-        ?: TABS.firstOrNull { tab -> nav.currentBackStack.value.any { it.destination.route == tab.route } && tab.route != Routes.HOME }?.route
-        ?: Routes.HOME
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 600.dp

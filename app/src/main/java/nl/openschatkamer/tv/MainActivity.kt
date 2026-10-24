@@ -29,6 +29,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
+import nl.openschatkamer.core.ui.AccountViewModel
+import nl.openschatkamer.core.ui.ListViewModel
+import nl.openschatkamer.core.ui.TimeTravelViewModel
+import nl.openschatkamer.tv.ui.LocalTvItemActions
+import nl.openschatkamer.tv.ui.LocalTvItemStates
+import nl.openschatkamer.tv.ui.TvAccountScreen
+import nl.openschatkamer.tv.ui.TvActionsDialog
+import nl.openschatkamer.tv.ui.TvItemStates
+import nl.openschatkamer.tv.ui.TvListScreen
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,7 +66,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import nl.openschatkamer.brand.BrandColors
-import nl.openschatkamer.brand.BrandSplash
 import nl.openschatkamer.core.data.ItemKind
 import nl.openschatkamer.core.data.SchatkamerItem
 import nl.openschatkamer.core.ui.BrowseSpec
@@ -95,23 +105,46 @@ class MainActivity : ComponentActivity() {
     private val app by lazy { application as SchatkamerTvApp }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splash = installSplashScreen()
+        val started = System.currentTimeMillis()
+        splash.setKeepOnScreenCondition {
+            app.catalog.cachedHome() == null && System.currentTimeMillis() - started < 2_500
+        }
         super.onCreate(savedInstanceState)
+        handleLink(intent)
         setContent { TvTheme { androidx.compose.material3.Surface(color = BrandColors.Ink) { TvRoot() } } }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        app.onForeground()
+    }
+
+    /** openschatkamer://program/{id}?play=1 (vanuit "Verder kijken" op het tv-startscherm). */
+    private val pendingLink = kotlinx.coroutines.flow.MutableStateFlow<android.net.Uri?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleLink(intent)
+    }
+
+    private fun handleLink(intent: android.content.Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "openschatkamer") pendingLink.value = data
     }
 
     @Composable
     private fun TvRoot() {
         val nav = rememberNavController()
-        val favorites by app.favorites.favorites.collectAsState()
-        val progressEntries by app.progress.entries.collectAsState()
-        val continueWatching = remember(progressEntries) { app.progress.continueWatching }
+        val library = app.library
+        val history by library.local.history.collectAsState()
+        val continueWatching by library.local.continueWatching.collectAsState()
         val homeViewModel: HomeViewModel = viewModel { HomeViewModel(app.catalog) }
+        val timeTravelViewModel: TimeTravelViewModel = viewModel { TimeTravelViewModel(app.catalog) }
+        val timeTravel by timeTravelViewModel.rows.collectAsState()
         val homeState by homeViewModel.home.collectAsState()
         var playing by remember { mutableStateOf<Pair<SchatkamerItem, Boolean>?>(null) }
-        var splashDone by rememberSaveable { mutableStateOf(false) }
-        var splashTimedOut by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) { kotlinx.coroutines.delay(4_000); splashTimedOut = true }
+        var actionItem by remember { mutableStateOf<SchatkamerItem?>(null) }
 
         val open: (SchatkamerItem) -> Unit = { item ->
             ItemMemo.remember(item)
@@ -124,16 +157,38 @@ class MainActivity : ComponentActivity() {
             }
         }
         val play: (SchatkamerItem, Boolean) -> Unit = { item, fromStart -> playing = item to fromStart }
+        val link by pendingLink.collectAsState()
+        LaunchedEffect(link) {
+            val uri = link ?: return@LaunchedEffect
+            pendingLink.value = null
+            val id = uri.pathSegments.firstOrNull() ?: return@LaunchedEffect
+            when (uri.host) {
+                "program" -> if (uri.getQueryParameter("play") == "1") {
+                    // Meteen verder kijken; de gegevens voor titel en beeld halen we erbij.
+                    val item = app.video.getProgramDetail(id).getOrNull()?.toItem() ?: SchatkamerItem(id = id, title = "")
+                    playing = item to false
+                } else nav.navigate("program/$id")
+                "series" -> nav.navigate("series/$id")
+            }
+        }
         val browse: (BrowseSpec) -> Unit = { nav.navigate(browseRoute(it)) }
 
-        // Na elke navigatie hoort de focus in de inhoud, niet in de zijbalk. De inhoud
-        // laadt vaak nog; probeer het dus even tot er iets focusbaars is.
+        val home = (homeState as? Load.Ready)?.data
+        val itemStates = remember(history, home) {
+            val byId = history.associateBy { it.item.id }
+            object : TvItemStates {
+                override fun isNew(item: SchatkamerItem) = home?.isNew(item) == true
+                override fun progress(item: SchatkamerItem) = byId[item.id]?.takeIf { !it.isFinished && it.positionMs > 15_000 }?.fraction
+                override fun watched(item: SchatkamerItem) = byId[item.id]?.isFinished == true
+            }
+        }
+
+        // Na elke navigatie hoort de focus in de inhoud, niet in de zijbalk.
         val contentFocus = remember { FocusRequester() }
         var contentHasFocus by remember { mutableStateOf(false) }
         val backStack by nav.currentBackStackEntryAsState()
         LaunchedEffect(backStack?.id, playing == null) {
             if (playing != null) return@LaunchedEffect
-            // Eerst de overgang laten aflopen: tot dan houdt het vorige scherm de focus.
             kotlinx.coroutines.delay(750)
             contentFocus.requestFocusSafely()
             repeat(15) {
@@ -143,6 +198,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        CompositionLocalProvider(LocalTvItemActions provides { actionItem = it }, LocalTvItemStates provides itemStates) {
         Box(Modifier.fillMaxSize().background(BrandColors.Ink)) {
             Row(Modifier.fillMaxSize()) {
                 SideNav(nav)
@@ -154,7 +210,7 @@ class MainActivity : ComponentActivity() {
                         .focusGroup()
                 ) {
                     NavHost(nav, startDestination = Dest.HOME) {
-                        composable(Dest.HOME) { TvHomeScreen(homeViewModel, continueWatching, open) { play(it, false) } }
+                        composable(Dest.HOME) { TvHomeScreen(homeViewModel, continueWatching, timeTravel, open, { play(it, false) }, browse) }
                         composable(Dest.SEARCH) {
                             val vm: SearchViewModel = viewModel { SearchViewModel(app.catalog, applicationContext) }
                             TvSearchScreen(vm, open)
@@ -163,19 +219,19 @@ class MainActivity : ComponentActivity() {
                             val vm: DiscoverViewModel = viewModel { DiscoverViewModel(app.catalog) }
                             TvDiscoverScreen(vm, browse)
                         }
-                        composable(Dest.MY_LIST) { TvMyListScreen(favorites, continueWatching, open) { play(it, false) } }
+                        composable(Dest.MY_LIST) {
+                            TvMyListScreen(library, open, { play(it, false) }, onOpenList = { nav.navigate("list/${android.net.Uri.encode(it.key)}") }, onAccount = { nav.navigate("account") })
+                        }
                         composable(Dest.SERIES, listOf(navArgument("id") { type = NavType.StringType })) { e ->
                             val id = e.arguments?.getString("id").orEmpty()
                             val vm: SeriesViewModel = viewModel { SeriesViewModel(app.catalog, id) }
-                            TvSeriesScreen(vm, favorites.any { it.id == id }, { app.favorites.toggleFavorite(it) }, app.progress::progressOf, open) { play(it, false) }
+                            TvSeriesScreen(vm, id, library, open) { play(it, false) }
                         }
                         composable(Dest.PROGRAM, listOf(navArgument("id") { type = NavType.StringType })) { e ->
                             val id = e.arguments?.getString("id").orEmpty()
                             val vm: ProgramViewModel = viewModel { ProgramViewModel(app.video, app.catalog, id) }
-                            TvProgramScreen(
-                                vm, favorites.any { it.id == id }, progressEntries.firstOrNull { it.item.id == id },
-                                { app.favorites.toggleFavorite(it) }, play, open, browse
-                            )
+                            LaunchedEffect(id) { app.video.resolveStream(id) }
+                            TvProgramScreen(vm, library, onAddToList = { actionItem = it }, onPlay = play, onOpen = open, onBrowse = browse)
                         }
                         composable(Dest.STORY, listOf(navArgument("slug") { type = NavType.StringType })) { e ->
                             val slug = e.arguments?.getString("slug").orEmpty()
@@ -187,18 +243,34 @@ class MainActivity : ComponentActivity() {
                             val vm: BrowseViewModel = viewModel { BrowseViewModel(app.catalog, spec.toFilter(app.catalog)) }
                             TvBrowseScreen(vm, spec, open)
                         }
+                        composable("list/{key}", listOf(navArgument("key") { type = NavType.StringType })) { e ->
+                            val key = e.arguments?.getString("key").orEmpty()
+                            val favorites by library.favorites.collectAsState()
+                            val vm: ListViewModel? = if (key == "local:favorites") null else viewModel { ListViewModel(library, key) }
+                            TvListScreen(vm, favorites.filter { it.kind != ItemKind.SERIES }, "Bewaarde uitzendingen", open) { play(it, false) }
+                        }
+                        composable("account") {
+                            val vm: AccountViewModel = viewModel { AccountViewModel(app.account) }
+                            TvAccountScreen(vm, onBack = { nav.popBackStack() })
+                        }
                     }
                 }
             }
 
             playing?.let { (item, fromStart) ->
                 BackHandler { playing = null }
-                TvPlayer(item, fromStart, app.video, app.progress, onClose = { playing = null })
+                key(item.id) {
+                    TvPlayer(
+                        item, fromStart, app.video, app.local, app.catalog,
+                        onPlayNext = { next -> playing = next to true },
+                        onClose = { playing = null }
+                    )
+                }
             }
 
-            if (!splashDone) {
-                BrandSplash(ready = homeState !is Load.Loading || splashTimedOut, onFinished = { splashDone = true })
-            }
+            actionItem?.let { item -> TvActionsDialog(item, library, onDismiss = { actionItem = null }, onOpenSeries = open) }
+
+        }
         }
     }
 

@@ -6,6 +6,13 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,6 +92,9 @@ interface PlayerActions {
     fun stopCasting()
     fun setCastVolume(v: Float)
     fun toggleCastMute()
+    fun setSpeed(speed: Float)
+    fun playNext()
+    fun cancelNext()
 }
 
 /**
@@ -113,6 +123,8 @@ fun PlayerScreen(
 @Composable
 private fun VideoPlayer(state: PlaybackState, player: ExoPlayer?, actions: PlayerActions, isInPip: Boolean, onClose: () -> Unit) {
     var controlsVisible by remember { mutableStateOf(true) }
+    var scrubMs by remember { mutableStateOf<Long?>(null) }
+    var speedMenu by remember { mutableStateOf(false) }
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
@@ -124,6 +136,12 @@ private fun VideoPlayer(state: PlaybackState, player: ExoPlayer?, actions: Playe
                 controllerShowTimeoutMs = 3500
                 keepScreenOn = true
                 setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controlsVisible = v == android.view.View.VISIBLE })
+                // Spoelen met de tijdbalk: toon een miniatuur van die plek.
+                findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)?.addListener(object : androidx.media3.ui.TimeBar.OnScrubListener {
+                    override fun onScrubStart(timeBar: androidx.media3.ui.TimeBar, position: Long) { scrubMs = position }
+                    override fun onScrubMove(timeBar: androidx.media3.ui.TimeBar, position: Long) { scrubMs = position }
+                    override fun onScrubStop(timeBar: androidx.media3.ui.TimeBar, position: Long, canceled: Boolean) { scrubMs = null }
+                })
             }
         },
         update = { view ->
@@ -137,7 +155,9 @@ private fun VideoPlayer(state: PlaybackState, player: ExoPlayer?, actions: Playe
     if (state.isLoading && state.error == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = BrandColors.Amber) }
     }
+    scrubMs?.let { position -> StoryboardPreview(state, position, Modifier.fillMaxSize()) }
     state.error?.let { PlayerError(it, actions::retry, onClose) }
+    if (!isInPip) NextEpisodeCard(state, actions, Modifier.fillMaxSize())
 
     if (!isInPip) {
         AnimatedVisibility(controlsVisible || state.error != null, enter = fadeIn(), exit = fadeOut()) {
@@ -154,7 +174,69 @@ private fun VideoPlayer(state: PlaybackState, player: ExoPlayer?, actions: Playe
                     val sub = state.media?.subtitle ?: state.item?.seriesTitle
                     if (!sub.isNullOrBlank()) Text(sub, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 }
+                Box {
+                    TextButton(onClick = { speedMenu = true }) { Text("${formatSpeed(state.speed)}×", color = Color.White) }
+                    DropdownMenu(expanded = speedMenu, onDismissRequest = { speedMenu = false }) {
+                        SPEEDS.forEach { sp ->
+                            DropdownMenuItem(text = { Text("${formatSpeed(sp)}×" + if (sp == 1f) "  (normaal)" else "") }, onClick = { actions.setSpeed(sp); speedMenu = false })
+                        }
+                    }
+                }
                 CastButton()
+            }
+        }
+    }
+}
+
+private val SPEEDS = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
+private fun formatSpeed(speed: Float) = if (speed % 1f == 0f) speed.toInt().toString() else speed.toString().replace('.', ',')
+
+/** Miniatuur uit het storyboard op de plek waar je naartoe spoelt. */
+@Composable
+private fun StoryboardPreview(state: PlaybackState, positionMs: Long, modifier: Modifier) {
+    val url = state.media?.stream?.storyboardUrl ?: return
+    val clipStart = ((state.media?.stream?.clipStartSec ?: 0.0) * 1000).toLong()
+    val context = LocalContext.current
+    val http = remember { nl.openschatkamer.core.data.SchatkamerHttpClient.getInstance(context) }
+    var image by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(url, positionMs / 3000) {
+        val board = nl.openschatkamer.core.playback.StoryboardLoader.load(http, url) ?: return@LaunchedEffect
+        val tile = board.tileAt(positionMs + clipStart) ?: return@LaunchedEffect
+        image = nl.openschatkamer.core.playback.StoryboardLoader.bitmap(http, tile)?.asImageBitmap()
+    }
+    Box(modifier, contentAlignment = Alignment.BottomCenter) {
+        Column(Modifier.padding(bottom = 96.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            image?.let {
+                androidx.compose.foundation.Image(
+                    it, null,
+                    modifier = Modifier.width(200.dp).aspectRatio(4f / 3f).clip(RoundedCornerShape(8.dp))
+                        .border(2.dp, Color.White, RoundedCornerShape(8.dp))
+                )
+            }
+            Text(formatTime(positionMs), color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
+        }
+    }
+}
+
+/** Aan het einde: de volgende aflevering, met aftellen en een knop om meteen te beginnen. */
+@Composable
+private fun NextEpisodeCard(state: PlaybackState, actions: PlayerActions, modifier: Modifier) {
+    val next = state.next ?: return
+    val countdown = state.nextCountdown ?: return
+    Box(modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(20.dp), contentAlignment = Alignment.BottomEnd) {
+        Row(
+            Modifier.widthIn(max = 420.dp).clip(RoundedCornerShape(12.dp)).background(BrandColors.Surface.copy(alpha = 0.95f)).padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Artwork(next.imageUrl, Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Volgende aflevering over $countdown s", style = MaterialTheme.typography.labelMedium, color = BrandColors.Amber)
+                Text(next.title, style = MaterialTheme.typography.titleSmall, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row {
+                    TextButton(onClick = actions::playNext) { Text("Nu afspelen", color = BrandColors.Amber) }
+                    TextButton(onClick = actions::cancelNext) { Text("Annuleren", color = BrandColors.TextMuted) }
+                }
             }
         }
     }
@@ -252,6 +334,7 @@ private fun RemoteLayout(
         below()
         Spacer(Modifier.weight(1f))
     }
+    NextEpisodeCard(state, actions, Modifier.fillMaxSize())
 }
 
 /** Afstandsbediening tijdens het casten (in de geest van de Family7-app). */

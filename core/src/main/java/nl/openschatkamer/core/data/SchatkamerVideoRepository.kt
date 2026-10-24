@@ -29,8 +29,8 @@ class SchatkamerVideoRepository(context: Context) {
     suspend fun getProgramDetail(programId: String): Result<SchatkamerProgramDetail> = withContext(Dispatchers.IO) {
         runCatching {
             SchatkamerParser.parseBffProgramDetail(http.getJson(http.url("/api/media/bff/programs/$programId")))
-                .also { details[programId] = it }
-        }
+                .also { details[programId] = it; SourceHealth.ok(SourceHealth.Source.PROGRAM) }
+        }.onFailure { SourceHealth.failed(SourceHealth.Source.PROGRAM, it) }
     }
 
     /** Een geldige stream voor [programId]; ververst automatisch als de handtekening bijna verloopt. */
@@ -41,10 +41,15 @@ class SchatkamerVideoRepository(context: Context) {
                 // /programma/{id} stuurt door naar de juiste serie-/afleveringspagina.
                 val html = http.getHtml(http.url("/programma/$programId"), fresh = true)
                 SchatkamerParser.parseSiteConfig(html)?.let(::rememberSiteConfig)
-                val stream = SchatkamerParser.parseStreamInfo(html) ?: throw NotPlayableException()
+                    ?: SourceHealth.fallback(SourceHealth.Source.CONFIG, "opgeslagen of ingebouwde waarden")
+                val stream = SchatkamerParser.parseStreamInfo(html)?.also { SourceHealth.ok(SourceHealth.Source.STREAM) }
+                    ?: SiteFallbacks.signedManifest(html)?.also {
+                        SourceHealth.fallback(SourceHealth.Source.STREAM, "streamadres los uit de pagina gelezen")
+                    }
+                    ?: throw NotPlayableException()
                 streams[programId] = stream
                 stream
-            }
+            }.onFailure { if (it !is NotPlayableException) SourceHealth.failed(SourceHealth.Source.STREAM, it) }
         }
 
     /** Alles wat de spelers nodig hebben, in één keer. */
@@ -76,6 +81,7 @@ class SchatkamerVideoRepository(context: Context) {
     )
 
     private fun rememberSiteConfig(config: SiteConfig) {
+        SourceHealth.ok(SourceHealth.Source.CONFIG)
         prefs.edit()
             .putString(KEY_LICENSE, config.theoplayerLicense)
             .putString(KEY_CDN, config.theoplayerCdnKey)

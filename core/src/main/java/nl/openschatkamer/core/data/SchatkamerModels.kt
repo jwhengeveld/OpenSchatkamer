@@ -37,8 +37,12 @@ data class SchatkamerRow(
 }
 
 data class SchatkamerHome(
-    val rows: List<SchatkamerRow> = emptyList()
+    val rows: List<SchatkamerRow> = emptyList(),
+    /** Sleutels (soort + id) van kaarten die er sinds de vorige keer bij zijn gekomen. */
+    val newIds: Set<String> = emptySet()
 ) {
+    fun isNew(item: SchatkamerItem): Boolean = (item.kind.name + item.id) in newIds
+
     /** Uitgelichte titels bovenaan: series en uitzendingen met een beeld, geen verhalen of personen. */
     val heroItems: List<SchatkamerItem>
         get() = rows.asSequence()
@@ -275,47 +279,60 @@ enum class Decade(val label: String, val from: Int, val to: Int) {
 
 /**
  * Alle zoek- en bladerfilters, één-op-één met de parameters van de zoekdienst
- * van de website (/api/media/bff/search).
+ * van de website (/api/media/bff/search). Meerdere waarden binnen één filter
+ * (bijv. twee genres) betekent "het een of het ander", zoals op de site.
  */
 data class SearchFilter(
     val query: String = "",
-    val broadcasters: List<String> = emptyList(),
-    val genre: String? = null,
-    val subject: String? = null,
-    val person: String? = null,
+    /** Archiefnamen van omroepen (fusieomroepen tellen hun voorgangers mee). */
+    val broadcasters: Set<String> = emptySet(),
+    val genres: Set<String> = emptySet(),
+    val subjects: Set<String> = emptySet(),
+    val people: Set<String> = emptySet(),
     val seriesId: String? = null,
     /** "video", "audio" of null voor allebei. */
     val material: String? = null,
     val sort: SortOrder = SortOrder.RELEVANCE,
+    /** Snelkeuze voor een decennium; [yearFrom]/[yearTo] gaan voor als ze gezet zijn. */
     val decade: Decade? = null,
+    val yearFrom: Int? = null,
+    val yearTo: Int? = null,
+    /** Exacte datums (jjjj-mm-dd), voor "deze week, 50 jaar geleden". */
+    val dateFrom: String? = null,
+    val dateTo: String? = null,
     /** Alleen wat je echt kunt afspelen; zo staat het op de website ook standaard. */
     val playableOnly: Boolean = true
 ) {
+    val effectiveYearFrom: Int? get() = yearFrom ?: decade?.from
+    val effectiveYearTo: Int? get() = yearTo ?: decade?.to
+    val hasPeriod: Boolean get() = effectiveYearFrom != null || effectiveYearTo != null || dateFrom != null
+
+    /** Aantal verfijningen bovenop de zoekterm of de context van het scherm. */
     val activeFilterCount: Int
-        get() = listOf(genre != null, subject != null, material != null, decade != null, !playableOnly)
-            .count { it } + if (sort != SortOrder.RELEVANCE && query.isNotBlank()) 1 else 0
+        get() = genres.size + subjects.size + (if (material != null) 1 else 0) + (if (hasPeriod) 1 else 0) +
+            (if (!playableOnly) 1 else 0) + (if (sort != SortOrder.RELEVANCE && query.isNotBlank()) 1 else 0)
 
     fun withoutRefinements(): SearchFilter = copy(
-        genre = null, subject = null, material = null, decade = null,
-        sort = if (query.isBlank()) sort else SortOrder.RELEVANCE, playableOnly = true
+        genres = emptySet(), subjects = emptySet(), material = null, decade = null, yearFrom = null, yearTo = null,
+        dateFrom = null, dateTo = null, sort = if (query.isBlank()) sort else SortOrder.RELEVANCE, playableOnly = true
     )
 
     /** De parameters voor de zoekdienst, in dezelfde vorm als de website ze stuurt. */
     fun toQueryParams(offset: Int, limit: Int): List<Pair<String, String>> = buildList {
         if (query.isNotBlank()) add("query" to query.trim())
-        broadcasters.forEach { add("broadcaster[]" to it) }
-        genre?.let { add("genre[]" to it) }
-        subject?.let { add("subject[]" to it) }
-        person?.let { add("person[]" to it) }
+        broadcasters.sorted().forEach { add("broadcaster[]" to it) }
+        genres.sorted().forEach { add("genre[]" to it) }
+        subjects.sorted().forEach { add("subject[]" to it) }
+        people.sorted().forEach { add("person[]" to it) }
         seriesId?.let { add("seriesId" to it) }
         material?.let { add("material[]" to it) }
         // Zonder zoekterm is "relevantie" betekenisloos; de website toont dan de nieuwste.
         val effectiveSort = if (query.isBlank() && sort == SortOrder.RELEVANCE) SortOrder.NEWEST else sort
         add("sort" to effectiveSort.apiValue)
-        decade?.let {
-            add("yearmin" to it.from.toString())
-            add("yearmax" to it.to.toString())
-        }
+        effectiveYearFrom?.let { add("yearmin" to it.toString()) }
+        effectiveYearTo?.let { add("yearmax" to it.toString()) }
+        dateFrom?.let { add("datemin" to it) }
+        dateTo?.let { add("datemax" to it) }
         if (playableOnly) add("playable" to "true")
         add("offset" to offset.toString())
         add("limit" to limit.toString())

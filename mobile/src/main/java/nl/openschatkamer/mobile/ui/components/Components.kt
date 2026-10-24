@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -29,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -70,6 +72,40 @@ import nl.openschatkamer.core.data.SchatkamerRow
 import nl.openschatkamer.core.data.SchatkamerText
 
 val CardShape = RoundedCornerShape(10.dp)
+
+/** Wat de kaarten over een item moeten weten: nieuw, voortgang, gezien. */
+interface ItemStates {
+    fun isNew(item: SchatkamerItem): Boolean = false
+    fun progress(item: SchatkamerItem): Float? = null
+    fun watched(item: SchatkamerItem): Boolean = false
+}
+
+/** Lang indrukken op een kaart opent het actiemenu (bewaren, lijst, gezien, delen). */
+val LocalItemActions = androidx.compose.runtime.staticCompositionLocalOf<(SchatkamerItem) -> Unit> { {} }
+val LocalItemStates = androidx.compose.runtime.compositionLocalOf<ItemStates> { object : ItemStates {} }
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun Modifier.itemClick(item: SchatkamerItem, onClick: () -> Unit): Modifier {
+    val actions = LocalItemActions.current
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    return this.combinedClickable(
+        onClick = onClick,
+        onLongClick = {
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+            actions(item)
+        },
+        onLongClickLabel = "Meer opties"
+    )
+}
+
+@Composable
+fun NewBadge(modifier: Modifier = Modifier) {
+    Text(
+        "NIEUW", style = MaterialTheme.typography.labelSmall, color = BrandColors.Ink,
+        modifier = modifier.clip(RoundedCornerShape(6.dp)).background(BrandColors.Amber).padding(horizontal = 6.dp, vertical = 2.dp)
+    )
+}
 
 /** Afbeelding met een rustige placeholder in de achtergrondkleur. */
 @Composable
@@ -117,14 +153,21 @@ fun ProgramCard(
     progress: Float? = null,
     large: Boolean = false
 ) {
-    Column(modifier.width(width).clip(CardShape).clickable(onClick = onClick)) {
+    val states = LocalItemStates.current
+    val shownProgress = progress ?: states.progress(item)
+    Column(modifier.width(width).clip(CardShape).itemClick(item, onClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(CardShape)) {
             Artwork(item.imageUrl, Modifier.fillMaxSize())
             Row(Modifier.align(Alignment.BottomStart).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (item.year.isNotBlank()) ArtBadge(item.year)
                 if (item.isAudio) ArtBadge("Audio", icon = Icons.Rounded.Headphones, tint = BrandColors.Audio)
             }
-            if (progress != null) {
+            Row(Modifier.align(Alignment.TopEnd).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (states.isNew(item)) NewBadge()
+                if (states.watched(item)) ArtBadge("Gezien", icon = Icons.Rounded.CheckCircle, tint = BrandColors.Amber)
+            }
+            if (shownProgress != null && shownProgress > 0f) {
+                val progress = shownProgress
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
@@ -151,10 +194,12 @@ fun ProgramCard(
 /** Staande poster (2:3) voor een serie. */
 @Composable
 fun SeriesPoster(item: SchatkamerItem, onClick: () -> Unit, modifier: Modifier = Modifier, width: Dp = 132.dp) {
-    Column(modifier.width(width).clip(CardShape).clickable(onClick = onClick)) {
+    val states = LocalItemStates.current
+    Column(modifier.width(width).clip(CardShape).itemClick(item, onClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(CardShape)) {
             Artwork(item.imageUrl, Modifier.fillMaxSize())
             if (item.isAudio) ArtBadge("Audio", Modifier.align(Alignment.TopEnd).padding(6.dp), Icons.Rounded.Headphones, BrandColors.Audio)
+            if (states.isNew(item)) NewBadge(Modifier.align(Alignment.TopStart).padding(6.dp))
         }
         Spacer(Modifier.height(6.dp))
         Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -171,9 +216,10 @@ fun StoryCard(item: SchatkamerItem, onClick: () -> Unit, modifier: Modifier = Mo
             .width(width)
             .aspectRatio(16f / 10f)
             .clip(CardShape)
-            .clickable(onClick = onClick)
+            .itemClick(item, onClick)
     ) {
         Artwork(item.imageUrl, Modifier.fillMaxSize())
+        if (LocalItemStates.current.isNew(item)) NewBadge(Modifier.align(Alignment.TopEnd).padding(10.dp))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.88f))))
         Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
             Text("VERHAAL", style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber)
@@ -288,10 +334,13 @@ fun ProgramListItem(
     progress: Float? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
+    val states = LocalItemStates.current
+    val shownProgress = progress ?: states.progress(item)
+    val watched = states.watched(item)
     Row(
         modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .itemClick(item, onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -303,9 +352,10 @@ fun ProgramListItem(
                 modifier = Modifier.align(Alignment.Center).size(30.dp).clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.45f)).padding(4.dp)
             )
-            if (progress != null) {
+            if (watched) ArtBadge("Gezien", Modifier.align(Alignment.TopEnd).padding(4.dp), Icons.Rounded.CheckCircle, BrandColors.Amber)
+            if (shownProgress != null && shownProgress > 0f && !watched) {
                 LinearProgressIndicator(
-                    progress = { progress }, color = BrandColors.Amber, trackColor = Color.Black.copy(alpha = 0.5f),
+                    progress = { shownProgress }, color = BrandColors.Amber, trackColor = Color.Black.copy(alpha = 0.5f),
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp), drawStopIndicator = {}
                 )
             }

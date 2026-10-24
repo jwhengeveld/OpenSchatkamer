@@ -1,6 +1,21 @@
 package nl.openschatkamer.mobile.ui.screens
 
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import nl.openschatkamer.core.data.SchatkamerText
+import nl.openschatkamer.core.ui.BrowseSpec
+import nl.openschatkamer.mobile.ui.components.Pill
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -62,24 +77,39 @@ import nl.openschatkamer.mobile.ui.components.SeriesPoster
 import nl.openschatkamer.mobile.ui.components.SkeletonList
 import nl.openschatkamer.mobile.ui.components.countLabel
 
+private enum class SearchTab(val label: String) { ALL("Alles"), SERIES("Series"), PROGRAMS("Uitzendingen"), PEOPLE("Personen"), SUBJECTS("Onderwerpen") }
+
 private val STARTERS = listOf("Polygoon", "Jiskefet", "Swiebertje", "Willem Ruis", "Sesamstraat", "Elfstedentocht", "Watersnoodramp", "Toppop")
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
     onOpen: (SchatkamerItem) -> Unit,
+    onBrowse: (BrowseSpec) -> Unit,
     contentPadding: PaddingValues
 ) {
+    var tab by rememberSaveable { mutableStateOf(SearchTab.ALL) }
+    // Spraakzoeken via de spraakherkenning van het toestel.
+    val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { viewModel.submit(it) }
+    }
+    val context = LocalContext.current
+    val canVoice = remember { RecognizerIntent.ACTION_RECOGNIZE_SPEECH.let { a -> context.packageManager.queryIntentActivities(Intent(a), 0).isNotEmpty() } }
     val text by viewModel.text.collectAsState()
     val state by viewModel.state.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
     val history by viewModel.history.collectAsState()
     val focus = LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // Zoeken uitvoeren sluit het toetsenbord, zoals in elke Android-app.
+    val done = { keyboard?.hide(); focus.clearFocus() }
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
 
     InfiniteScroll(listState, state, viewModel::loadMore)
     LaunchedEffect(state.filter) { listState.scrollToItem(0) }
+    LaunchedEffect(listState.isScrollInProgress) { if (listState.isScrollInProgress) done() }
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.windowInsetsPadding(WindowInsets.statusBars)) {
@@ -90,12 +120,22 @@ fun SearchScreen(
                 placeholder = { Text("Programma, persoon, onderwerp of jaar") },
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 trailingIcon = {
-                    if (text.isNotEmpty()) IconButton(onClick = viewModel::clear) { Icon(Icons.Rounded.Close, "Wissen") }
+                    when {
+                        text.isNotEmpty() -> IconButton(onClick = viewModel::clear) { Icon(Icons.Rounded.Close, "Wissen") }
+                        canVoice -> IconButton(onClick = {
+                            voice.launch(
+                                Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "nl-NL")
+                                    .putExtra(RecognizerIntent.EXTRA_PROMPT, "Wat zoek je in de Schatkamer?")
+                            )
+                        }) { Icon(Icons.Rounded.Mic, "Spraakzoeken") }
+                    }
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { viewModel.submit(); focus.clearFocus() }),
+                keyboardActions = KeyboardActions(onSearch = { viewModel.submit(); done() }),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = BrandColors.SurfaceHigh,
                     unfocusedContainerColor = BrandColors.SurfaceHigh,
@@ -111,7 +151,7 @@ fun SearchScreen(
             // Suggesties tijdens het typen.
             if (suggestions.isNotEmpty() && text.isNotBlank() && text.trim() != state.filter.query) {
                 items(suggestions, key = { "s_$it" }) { s ->
-                    SuggestionRow(s, Icons.Rounded.NorthWest) { viewModel.submit(s); focus.clearFocus() }
+                    SuggestionRow(s, Icons.Rounded.NorthWest) { viewModel.submit(s); done() }
                 }
             }
 
@@ -123,14 +163,41 @@ fun SearchScreen(
                             TextButton(onClick = viewModel::clearHistory) { Text("Wissen", color = BrandColors.TextMuted) }
                         }
                     }
-                    items(history, key = { "h_$it" }) { h -> SuggestionRow(h, Icons.Rounded.History) { viewModel.submit(h) } }
+                    items(history, key = { "h_$it" }) { h -> SuggestionRow(h, Icons.Rounded.History) { viewModel.submit(h); done() } }
                 }
                 item { Text("Probeer bijvoorbeeld", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp)) }
-                items(STARTERS, key = { "t_$it" }) { s -> SuggestionRow(s, Icons.AutoMirrored.Rounded.TrendingUp) { viewModel.submit(s) } }
+                items(STARTERS, key = { "t_$it" }) { s -> SuggestionRow(s, Icons.AutoMirrored.Rounded.TrendingUp) { viewModel.submit(s); done() } }
                 return@LazyColumn
             }
 
-            resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry)
+            item(key = "tabs") {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(SearchTab.entries) { t -> Pill(t.label, { tab = t }, selected = tab == t) }
+                }
+            }
+            when (tab) {
+                SearchTab.ALL -> resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry)
+                SearchTab.PROGRAMS -> resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry, showSeries = false)
+                SearchTab.SERIES -> {
+                    if (state.series.isEmpty() && state.facets.programs.isEmpty()) item { EmptyState("Geen series", "Geen serie past bij deze zoekterm.") }
+                    items(state.series.chunked(3), key = { row -> "sr_" + row.first().id }) { row ->
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            row.forEach { SeriesPoster(it, { onOpen(it) }, Modifier.weight(1f)) }
+                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                    if (state.facets.programs.isNotEmpty()) item {
+                        SectionHeader("Meer programma's met deze zoekterm")
+                        FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.facets.programs.take(24).forEach { f ->
+                                Pill("${SchatkamerText.prettyTitle(f.label)}  ${f.count}", { viewModel.submit(SchatkamerText.prettyTitle(f.label)) })
+                            }
+                        }
+                    }
+                }
+                SearchTab.PEOPLE -> facetChips(state.facets.people, "Geen personen gevonden") { onBrowse(BrowseSpec(it, person = it)) }
+                SearchTab.SUBJECTS -> facetChips(state.facets.subjects, "Geen onderwerpen gevonden") { onBrowse(BrowseSpec(it.replaceFirstChar { c -> c.titlecase() }, subject = it)) }
+            }
         }
     }
 }
@@ -147,6 +214,19 @@ private fun SuggestionRow(text: String, icon: androidx.compose.ui.graphics.vecto
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+private fun androidx.compose.foundation.lazy.LazyListScope.facetChips(facets: List<nl.openschatkamer.core.data.FacetItem>, empty: String, onPick: (String) -> Unit) {
+    if (facets.isEmpty()) {
+        item { EmptyState(empty, "Probeer een andere zoekterm.") }
+        return
+    }
+    item {
+        FlowRow(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            facets.forEach { f -> Pill("${f.label}  ${countLabel(f.count, "").trim()}", { onPick(f.label) }) }
+        }
+    }
+}
+
 /** Resultaten van een zoek- of bladeropdracht: series, filters en de uitzendingen. */
 fun androidx.compose.foundation.lazy.LazyListScope.resultsContent(
     state: QueryState,
@@ -154,7 +234,8 @@ fun androidx.compose.foundation.lazy.LazyListScope.resultsContent(
     onFilter: (nl.openschatkamer.core.data.SearchFilter) -> Unit,
     onRetry: () -> Unit,
     showSeries: Boolean = true,
-    showSeriesLabel: Boolean = true
+    showSeriesLabel: Boolean = true,
+    lockBroadcaster: Boolean = false
 ) {
     if (showSeries && state.series.isNotEmpty()) {
         item(key = "series") {
@@ -166,7 +247,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.resultsContent(
     }
     item(key = "filters") {
         Column(Modifier.padding(top = 8.dp)) {
-            FilterBar(state.filter, state.facets.genres, onFilter)
+            FilterBar(state.filter, state.facets.genres, onFilter, broadcasterFacets = state.facets.broadcasters, lockBroadcaster = lockBroadcaster)
             if (state.loaded && state.error == null) {
                 Text(
                     countLabel(state.total, if (state.total == 1) "uitzending" else "uitzendingen"),
@@ -201,7 +282,7 @@ fun InfiniteScroll(listState: LazyListState, state: QueryState, loadMore: () -> 
         derivedStateOf {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-            info.totalItemsCount > 0 && last >= info.totalItemsCount - 6
+            info.totalItemsCount > 0 && last >= info.totalItemsCount - 10
         }
     }
     LaunchedEffect(listState, state.items.size, state.endReached) {

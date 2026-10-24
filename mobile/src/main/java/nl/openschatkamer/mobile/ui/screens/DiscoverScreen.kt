@@ -38,6 +38,7 @@ import nl.openschatkamer.core.ui.DiscoverViewModel
 import nl.openschatkamer.mobile.ui.components.BroadcasterTile
 import nl.openschatkamer.mobile.ui.components.CardShape
 import nl.openschatkamer.mobile.ui.components.Pill
+import nl.openschatkamer.mobile.ui.components.PersonCard
 import nl.openschatkamer.mobile.ui.components.ScreenTitle
 import nl.openschatkamer.mobile.ui.components.SectionHeader
 
@@ -77,6 +78,25 @@ fun DiscoverScreen(
             }
         }
 
+        if (data.people.isNotEmpty()) {
+            item {
+                SectionHeader("Personen")
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(data.people, key = { it.id }) { p -> PersonCard(p, { onBrowse(BrowseSpec(title = p.title, person = p.title)) }) }
+                }
+            }
+        }
+        if (data.subjects.isNotEmpty()) {
+            item {
+                SectionHeader("Onderwerpen")
+                FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    data.subjects.take(30).forEach { sub ->
+                        val title = sub.label.replaceFirstChar { it.titlecase() }
+                        Pill(title, { onBrowse(BrowseSpec(title = title, subject = sub.label)) })
+                    }
+                }
+            }
+        }
         if (data.genres.isNotEmpty()) {
             item {
                 SectionHeader("Genres")

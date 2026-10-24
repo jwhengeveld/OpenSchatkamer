@@ -8,7 +8,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,10 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -47,10 +44,13 @@ import androidx.compose.ui.unit.sp
  * zodat niemand denkt dat dit de app van Beeld & Geluid is.
  */
 object BrandColors {
-    val Ink = Color(0xFF0E0F13)
-    val Surface = Color(0xFF17191F)
-    val SurfaceHigh = Color(0xFF21242C)
-    val Outline = Color(0xFF30343E)
+    /** Nachtblauw, dezelfde basis als het launcher-icoon. */
+    val Ink = Color(0xFF0B0F1C)
+    val Surface = Color(0xFF131A2B)
+    val SurfaceHigh = Color(0xFF1C2439)
+    val Outline = Color(0xFF2B3550)
+    val NightTop = Color(0xFF1E2848)
+    val Gold = Color(0xFFFFDC78)
     val Amber = Color(0xFFF2B33D)
     val AmberDeep = Color(0xFFC98A1B)
     val Text = Color(0xFFF4F0E8)
@@ -69,18 +69,63 @@ const val UNOFFICIAL_NOTICE =
         "Alle uitzendingen komen uit De Schatkamer (schatkamer.beeldengeluid.nl) en zijn " +
         "eigendom van Beeld & Geluid en de omroepen."
 
+/**
+ * Het beeldmerk: een "O" die op een kier staat (open), met een lens en een
+ * afspeelteken. Getekend in Compose, dus scherp op elk formaat; [open] laat
+ * de ring openzwaaien (0..1) voor het opstartscherm.
+ */
 @Composable
-fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
-    Image(
-        painter = painterResource(R.drawable.openschatkamer_mark),
-        contentDescription = null,
-        modifier = modifier.size(size)
-    )
+fun BrandMark(size: Dp, modifier: Modifier = Modifier, open: Float = 1f) {
+    androidx.compose.foundation.Canvas(modifier.size(size)) {
+        val u = this.size.minDimension / 48f
+        val gold = Brush.linearGradient(
+            listOf(BrandColors.Gold, BrandColors.AmberDeep),
+            start = androidx.compose.ui.geometry.Offset(6 * u, 4 * u),
+            end = androidx.compose.ui.geometry.Offset(42 * u, 44 * u)
+        )
+        val ringRadius = 18.7f * u
+        val sweep = 312f * open.coerceIn(0f, 1f)
+        drawArc(
+            brush = gold,
+            startAngle = -30f,
+            sweepAngle = sweep,
+            useCenter = false,
+            topLeft = androidx.compose.ui.geometry.Offset(24 * u - ringRadius, 24 * u - ringRadius),
+            size = androidx.compose.ui.geometry.Size(ringRadius * 2, ringRadius * 2),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.6f * u, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        )
+        val lens = androidx.compose.ui.graphics.Path().apply {
+            fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+            addOval(androidx.compose.ui.geometry.Rect(androidx.compose.ui.geometry.Offset(24 * u, 24 * u), 12f * u))
+            val h = 10.4f * u
+            val w = h * 0.9f
+            val cx = 24 * u + w * 0.1f
+            moveTo(cx - w / 2, 24 * u - h / 2)
+            lineTo(cx - w / 2, 24 * u + h / 2)
+            lineTo(cx + w / 2, 24 * u)
+            close()
+        }
+        drawPath(lens, gold)
+        val dotAngle = Math.toRadians(-54.0)
+        drawCircle(
+            color = Color(0xFFFFECB4).copy(alpha = open.coerceIn(0f, 1f)),
+            radius = 2.1f * u,
+            center = androidx.compose.ui.geometry.Offset(
+                (24 + 18.7 * kotlin.math.cos(dotAngle)).toFloat() * u,
+                (24 + 18.7 * kotlin.math.sin(dotAngle)).toFloat() * u
+            )
+        )
+    }
 }
 
 /** Het woordmerk: spoel, met "Open" klein in amber boven "Schatkamer". */
 @Composable
-fun Wordmark(modifier: Modifier = Modifier, markSize: Dp = 30.dp, fontSize: TextUnit = 22.sp) {
+fun Wordmark(
+    modifier: Modifier = Modifier,
+    markSize: Dp = 30.dp,
+    fontSize: TextUnit = 22.sp,
+    platformSuffix: String? = null
+) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         BrandMark(markSize)
         Spacer(Modifier.width(markSize * 0.3f))
@@ -92,6 +137,16 @@ fun Wordmark(modifier: Modifier = Modifier, markSize: Dp = 30.dp, fontSize: Text
             BasicText(
                 "Schatkamer",
                 style = TextStyle(fontFamily = BrandFonts.Display, fontSize = fontSize, color = BrandColors.Text)
+            )
+        }
+        if (platformSuffix != null) {
+            Spacer(Modifier.width(fontSize.value.dp * 0.4f))
+            BasicText(
+                platformSuffix,
+                modifier = Modifier
+                    .background(BrandColors.Amber, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                    .padding(horizontal = 7.dp, vertical = 1.dp),
+                style = TextStyle(fontFamily = BrandFonts.Display, fontSize = fontSize * 0.55f, color = BrandColors.Ink)
             )
         }
     }
@@ -106,15 +161,14 @@ fun BrandSplash(
     ready: Boolean,
     onFinished: () -> Unit,
     modifier: Modifier = Modifier,
-    tagline: String = "Kijken en luisteren in het archief van de Nederlandse televisie"
+    tagline: String = "Kijken en luisteren in het archief van de Nederlandse televisie",
+    platformSuffix: String? = null
 ) {
-    val spin = rememberInfiniteTransition(label = "spoel")
-    val angle by spin.animateFloat(
-        0f, 360f, infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart), label = "hoek"
-    )
+    val pulse = rememberInfiniteTransition(label = "laden")
+    val glow by pulse.animateFloat(0.85f, 1f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse), label = "gloed")
     val fade = remember { Animatable(1f) }
     val intro = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { intro.animateTo(1f, tween(500, easing = FastOutSlowInEasing)) }
+    LaunchedEffect(Unit) { intro.animateTo(1f, tween(700, easing = FastOutSlowInEasing)) }
     LaunchedEffect(ready) {
         if (ready) {
             kotlinx.coroutines.delay(450)
@@ -127,14 +181,24 @@ fun BrandSplash(
         modifier
             .fillMaxSize()
             .alpha(fade.value)
-            .background(Brush.verticalGradient(listOf(Color(0xFF1C1D24), BrandColors.Ink))),
+            .background(Brush.linearGradient(listOf(BrandColors.NightTop, BrandColors.Ink))),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(intro.value)) {
-            BrandMark(96.dp, Modifier.rotate(angle))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            BrandMark(104.dp, Modifier.alpha(glow), open = intro.value)
             Spacer(Modifier.height(28.dp))
             BasicText("Open", style = TextStyle(fontFamily = BrandFonts.Display, fontSize = 20.sp, color = BrandColors.Amber))
             BasicText("Schatkamer", style = TextStyle(fontFamily = BrandFonts.Display, fontSize = 40.sp, color = BrandColors.Text))
+            if (platformSuffix != null) {
+                Spacer(Modifier.height(6.dp))
+                BasicText(
+                    platformSuffix,
+                    modifier = Modifier
+                        .background(BrandColors.Amber, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                    style = TextStyle(fontFamily = BrandFonts.Display, fontSize = 18.sp, color = BrandColors.Ink)
+                )
+            }
             Spacer(Modifier.height(12.dp))
             BasicText(
                 tagline,

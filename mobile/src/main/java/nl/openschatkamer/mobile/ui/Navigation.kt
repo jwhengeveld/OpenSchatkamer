@@ -16,6 +16,12 @@ object Routes {
     const val PROGRAM = "program/{id}"
     const val STORY = "story/{slug}"
     const val BROWSE = "browse?spec={spec}"
+    const val LIST = "list/{key}"
+    const val ACCOUNT = "account"
+    const val HISTORY = "history"
+    const val DIAGNOSTICS = "diagnostics"
+
+    fun list(key: String) = "list/${Uri.encode(key)}"
 
     fun series(id: String) = "series/$id"
     fun program(id: String) = "program/$id"

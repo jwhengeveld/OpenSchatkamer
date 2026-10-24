@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package nl.openschatkamer.tv.ui
 
 import androidx.compose.animation.core.animateFloatAsState
@@ -6,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -90,20 +94,41 @@ fun TvTheme(content: @Composable () -> Unit) {
 
 val TvShape = RoundedCornerShape(12.dp)
 
+/** Krijgt de kaart die focus heeft, voor de meebewegende achtergrond op het startscherm. */
+val LocalTvFocusSink = androidx.compose.runtime.staticCompositionLocalOf<(SchatkamerItem) -> Unit> { {} }
+
+/** Lang op OK drukken op een kaart: het actiemenu. */
+val LocalTvItemActions = androidx.compose.runtime.staticCompositionLocalOf<(SchatkamerItem) -> Unit> { {} }
+
+/** Kaartstatus (nieuw, voortgang, gezien) zoals op de telefoon. */
+interface TvItemStates {
+    fun isNew(item: SchatkamerItem): Boolean = false
+    fun progress(item: SchatkamerItem): Float? = null
+    fun watched(item: SchatkamerItem): Boolean = false
+}
+val LocalTvItemStates = androidx.compose.runtime.compositionLocalOf<TvItemStates> { object : TvItemStates {} }
+
 /**
  * Maakt iets focusbaar met de afstandsbediening: licht vergroot met een
  * amberkleurige rand, zodat altijd duidelijk is waar je bent.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun Modifier.tvFocusable(onClick: () -> Unit, shape: Shape = TvShape, scaleTo: Float = 1.06f): Modifier {
+fun Modifier.tvFocusable(onClick: () -> Unit, shape: Shape = TvShape, scaleTo: Float = 1.06f, item: SchatkamerItem? = null): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) scaleTo else 1f, tween(160), label = "focus")
+    val sink = LocalTvFocusSink.current
+    val actions = LocalTvItemActions.current
+    if (item != null) androidx.compose.runtime.LaunchedEffect(focused) { if (focused) sink(item) }
     return this
         .scale(scale)
         .border(if (focused) 3.dp else 0.dp, if (focused) BrandColors.Amber else Color.Transparent, shape)
         .clip(shape)
-        .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+        .combinedClickable(
+            interactionSource = interaction, indication = null, onClick = onClick,
+            onLongClick = item?.let { { actions(it) } }
+        )
 }
 
 @Composable
@@ -122,15 +147,21 @@ fun SchatkamerItem.tvMeta(): String = listOfNotNull(
 @Composable
 fun TvProgramCard(item: SchatkamerItem, onClick: () -> Unit, width: Dp = 280.dp, progress: Float? = null, modifier: Modifier = Modifier) {
     Column(modifier.width(width)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).tvFocusable(onClick)) {
+        val states = LocalTvItemStates.current
+        val shown = progress ?: states.progress(item)
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).tvFocusable(onClick, item = item)) {
             TvArtwork(item.imageUrl, Modifier.fillMaxSize())
             Row(Modifier.align(Alignment.BottomStart).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (item.year.isNotBlank()) Badge(item.year)
                 if (item.isAudio) Badge("Audio", BrandColors.Audio)
             }
-            if (progress != null) {
+            Row(Modifier.align(Alignment.TopEnd).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (states.isNew(item)) Badge("NIEUW", BrandColors.Amber)
+                if (states.watched(item)) Badge("✓ Gezien", BrandColors.Amber)
+            }
+            if (shown != null && shown > 0f) {
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.5f))) {
-                    Box(Modifier.fillMaxWidth(progress).height(4.dp).background(BrandColors.Amber))
+                    Box(Modifier.fillMaxWidth(shown).height(4.dp).background(BrandColors.Amber))
                 }
             }
         }
@@ -152,7 +183,7 @@ private fun Badge(text: String, color: Color = BrandColors.Text) {
 @Composable
 fun TvSeriesPoster(item: SchatkamerItem, onClick: () -> Unit, width: Dp = 168.dp) {
     Column(Modifier.width(width)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).tvFocusable(onClick)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).tvFocusable(onClick, item = item)) {
             TvArtwork(item.imageUrl, Modifier.fillMaxSize())
             if (item.isAudio) Icon(Icons.Rounded.Headphones, null, tint = BrandColors.Audio, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
         }
@@ -163,7 +194,7 @@ fun TvSeriesPoster(item: SchatkamerItem, onClick: () -> Unit, width: Dp = 168.dp
 
 @Composable
 fun TvStoryCard(item: SchatkamerItem, onClick: () -> Unit) {
-    Box(Modifier.width(380.dp).aspectRatio(16f / 9f).tvFocusable(onClick)) {
+    Box(Modifier.width(380.dp).aspectRatio(16f / 9f).tvFocusable(onClick, item = item)) {
         TvArtwork(item.imageUrl, Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.3f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.9f))))
         Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
@@ -211,7 +242,11 @@ fun TvRowTitle(text: String, modifier: Modifier = Modifier) {
 fun TvCatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit) {
     Column {
         TvRowTitle(row.title.trim())
-        LazyRow(contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        LazyRow(
+            modifier = Modifier.focusRestorer(),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
             itemsIndexed(row.items, key = { _, it -> it.kind.name + it.id }) { index, item ->
                 val open = { onOpen(item) }
                 when {
