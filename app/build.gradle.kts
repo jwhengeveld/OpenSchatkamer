@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 val keystorePropertiesFile = rootProject.file("keystore.properties")
@@ -22,8 +23,8 @@ android {
         applicationId = "nl.openschatkamer.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 22
-        versionName = "2.1.1"
+        versionCode = 23
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -75,6 +76,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":brand"))
     implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile-tv"))
     // "Verder kijken" op het startscherm van Google TV / Android TV.
     implementation(libs.androidx.tvprovider)
     implementation(libs.androidx.core.splashscreen)

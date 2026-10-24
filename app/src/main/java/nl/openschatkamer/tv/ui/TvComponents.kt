@@ -4,6 +4,7 @@ package nl.openschatkamer.tv.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -164,7 +165,8 @@ fun TvArtwork(url: String?, modifier: Modifier = Modifier, audio: Boolean = fals
         modifier.background(Brush.linearGradient(listOf(BrandColors.SurfaceHigh, BrandColors.Surface))),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 18.dp)) {
+        var loaded by remember(url) { mutableStateOf(false) }
+        if (!loaded) Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 18.dp)) {
             Icon(
                 if (audio) Icons.Rounded.Headphones else Icons.Rounded.Movie, null,
                 tint = (if (audio) BrandColors.Audio else BrandColors.Amber).copy(alpha = 0.7f), modifier = Modifier.size(26.dp)
@@ -174,7 +176,7 @@ fun TvArtwork(url: String?, modifier: Modifier = Modifier, audio: Boolean = fals
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp)
             )
         }
-        if (!url.isNullOrBlank()) AsyncImage(url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        if (!url.isNullOrBlank()) AsyncImage(url, null, contentScale = ContentScale.Crop, onSuccess = { loaded = true }, modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -446,6 +448,44 @@ fun TvMessage(title: String, message: String, actionLabel: String? = null, onAct
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(20.dp))
             TvPill(actionLabel, onAction, selected = true)
+        }
+    }
+}
+
+/** Een glans die over de laadvlakken loopt. */
+@Composable
+fun rememberTvShimmer(): Brush {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "laden")
+    val x by transition.animateFloat(
+        initialValue = -600f, targetValue = 1800f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(tween<Float>(1400)), label = "glans"
+    )
+    return Brush.linearGradient(
+        listOf(BrandColors.Surface, BrandColors.SurfaceHigh, BrandColors.Surface),
+        start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x + 600f, 300f)
+    )
+}
+
+/** Voorlopige kaart terwijl de inhoud laadt. */
+@Composable
+fun TvSkeletonCard(brush: Brush, modifier: Modifier = Modifier.width(240.dp)) {
+    Column(modifier) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(TvShape).background(brush))
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth(0.8f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(brush))
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.fillMaxWidth(0.5f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(brush))
+    }
+}
+
+/** Voorlopige rijen terwijl Start laadt: het scherm oogt meteen gevuld. */
+@Composable
+fun TvSkeletonRows(rows: Int = 3) {
+    val brush = rememberTvShimmer()
+    Column(Modifier.padding(start = 8.dp)) {
+        repeat(rows) {
+            Box(Modifier.padding(top = 24.dp, bottom = 14.dp).width(260.dp).height(22.dp).clip(RoundedCornerShape(6.dp)).background(brush))
+            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) { repeat(6) { TvSkeletonCard(brush) } }
         }
     }
 }

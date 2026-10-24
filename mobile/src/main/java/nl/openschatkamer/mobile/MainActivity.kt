@@ -405,6 +405,13 @@ private fun Shell(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 600.dp
+        // Lijsten naast elkaar op tablets (de rail is ongeveer 80 dp breed).
+        val columns = when {
+            maxWidth >= 1180.dp -> 3
+            maxWidth >= 840.dp -> 2
+            else -> 1
+        }
+        androidx.compose.runtime.CompositionLocalProvider(nl.openschatkamer.mobile.ui.components.LocalListColumns provides columns) {
         if (wide) {
             Row(Modifier.fillMaxSize()) {
                 NavigationRail(containerColor = BrandColors.Surface, modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)) {
@@ -435,6 +442,7 @@ private fun Shell(
                     }
                 }
             }
+        }
         }
     }
 }

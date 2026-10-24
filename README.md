@@ -71,7 +71,14 @@ Elke bron heeft een terugvalroute; `SourceHealth` houdt bij welke route werkt (v
 - **Systeem**: het systeem-opstartscherm, predictive back, themed icons (Android 13+), deelmenu, mediasessie en -melding, PiP, haptics bij lang indrukken.
 - **Telefoon**: launcher-snelkoppelingen (Zoeken, Mijn lijst), deep links (`openschatkamer://…` en links naar de site via "Openen met") en spraakzoeken.
 - **Speler**: storyboard-miniaturen bij het spoelen, afspeelsnelheid en automatisch de volgende aflevering.
-- **TV**: verder kijken in de rij "Verder kijken" op het startscherm van Google TV (Watch Next), een achtergrond die meebeweegt met de focus, focusherstel per rij en een actiemenu via lang OK.
+- **TV**:
+  - Op het startscherm van Google TV: "Verder kijken" (Watch Next) en een eigen kanaal met uitgelichte uitzendingen.
+  - Zoeken vanuit Google TV en de Assistent (`SearchProvider`, alleen leesbaar voor het systeem), de zoekknop op de afstandsbediening en spraakzoeken.
+  - Layout zoals Google TV: een inklapbare zijbalk, een vaste kop met wat je geselecteerd hebt, en na even stilstaan een stil voorbeeldfragment op de achtergrond.
+  - De hele interface staat op 80% schaal (`TV_UI_SCALE`), zodat er meer tegelijk in beeld past.
+  - Focusherstel per rij, een actiemenu via lang OK en laadvlakken in plaats van een laadrondje.
+- **Tablet**: lijsten in 2 of 3 kolommen, en op de uitzendingspagina staan beeld en titel naast elkaar.
+- **Snelheid**: Baseline Profiles voor beide apps (`baselineprofile-mobile`, `baselineprofile-tv`). Opnieuw maken met `./gradlew :mobile:generateReleaseBaselineProfile` en `:app:generateReleaseBaselineProfile`, met een emulator aan.
 
 ## Chromecast
 

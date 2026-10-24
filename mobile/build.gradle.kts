@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 val keystorePropertiesFile = rootProject.file("keystore.properties")
@@ -22,8 +23,8 @@ android {
         applicationId = "nl.openschatkamer.mobile"
                 minSdk = 24
         targetSdk = 36
-        versionCode = 21
-        versionName = "2.1.0"
+        versionCode = 23
+        versionName = "2.2.0"
     }
 
     signingConfigs {
@@ -73,6 +74,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":brand"))
     implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile-mobile"))
     implementation(libs.androidx.core.splashscreen)
 
     implementation(libs.androidx.core.ktx)

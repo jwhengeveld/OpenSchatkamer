@@ -480,3 +480,29 @@ fun Pill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, selec
         }
     }
 }
+
+/** Hoeveel kolommen lijsten krijgen: 1 op een telefoon, 2 of 3 op een tablet. */
+val LocalListColumns = androidx.compose.runtime.compositionLocalOf { 1 }
+
+/**
+ * Als `items`, maar op brede schermen naast elkaar in [columns] kolommen, zodat
+ * een lijst op een tablet niet één lange, smalle strook over het hele scherm is.
+ */
+fun <T> androidx.compose.foundation.lazy.LazyListScope.adaptiveItems(
+    items: List<T>,
+    columns: Int,
+    key: (T) -> Any,
+    content: @Composable (T) -> Unit
+) {
+    if (columns <= 1) {
+        items(items.size, key = { key(items[it]) }) { content(items[it]) }
+        return
+    }
+    val rows = items.chunked(columns)
+    items(rows.size, key = { "row_" + key(rows[it].first()) }) { index ->
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            rows[index].forEach { Box(Modifier.weight(1f)) { content(it) } }
+            repeat(columns - rows[index].size) { Spacer(Modifier.weight(1f)) }
+        }
+    }
+}

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -95,6 +96,8 @@ import nl.openschatkamer.mobile.ui.components.LoadingFooter
 import nl.openschatkamer.mobile.ui.components.Pill
 import nl.openschatkamer.mobile.ui.components.ProgramCard
 import nl.openschatkamer.mobile.ui.components.ProgramListItem
+import nl.openschatkamer.mobile.ui.components.LocalListColumns
+import nl.openschatkamer.mobile.ui.components.adaptiveItems
 import nl.openschatkamer.mobile.ui.components.SectionHeader
 import nl.openschatkamer.mobile.ui.components.Skeleton
 import nl.openschatkamer.mobile.ui.components.SkeletonList
@@ -171,6 +174,7 @@ fun SeriesScreen(
     LaunchedEffect(state.total) { if (state.total > 0) library.local.markSeriesSeen(seriesId, state.total) }
 
     Box(Modifier.fillMaxSize()) {
+        val columns = LocalListColumns.current
         LazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
             item {
                 Box(Modifier.fillMaxWidth().height(420.dp)) {
@@ -256,7 +260,7 @@ fun SeriesScreen(
                     EmptyState(if (query.isNotBlank()) "Niets gevonden" else "Geen afleveringen", if (query.isNotBlank()) "Geen aflevering past bij \"$query\"." else "Van deze serie is (nog) niets af te spelen.")
                 }
                 else -> {
-                    items(state.items, key = { it.id }) { ep ->
+                    adaptiveItems(state.items, columns, key = { it.id }) { ep ->
                         ProgramListItem(ep, { onOpen(ep) }, showSeries = false)
                     }
                     if (state.isLoadingMore) item { LoadingFooter() }
@@ -313,77 +317,95 @@ fun ProgramScreen(
     val isFavorite = library.isFavorite(item)
     var addToList by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize()) {
+    // Telefoon: foto bovenaan, alles eronder. Tablet/liggend: foto en titel naast elkaar,
+    // zodat de foto niet het halve scherm vult.
+    val hero: @Composable (Modifier) -> Unit = { heroModifier ->
+        Box(heroModifier.clickable { if (item.title.isNotBlank()) onPlay(item, false) }) {
+            Backdrop(item.imageUrl, Modifier.fillMaxSize())
+            Icon(
+                if (item.isAudio) Icons.Rounded.Headphones else Icons.Rounded.PlayArrow, "Afspelen",
+                tint = BrandColors.Ink,
+                modifier = Modifier.align(Alignment.Center).size(68.dp).clip(CircleShape).background(BrandColors.Amber).padding(14.dp)
+            )
+        }
+    }
+    val titleBlock: @Composable () -> Unit = {
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            item.seriesTitle?.takeIf { it.isNotBlank() }?.let { s ->
+                Text(
+                    s.uppercase(), style = MaterialTheme.typography.labelMedium, color = BrandColors.Amber,
+                    modifier = Modifier.clickable { item.seriesId?.let { onOpen(SchatkamerItem(id = it, title = s, kind = ItemKind.SERIES, seriesId = it, seriesTitle = s)) } }
+                )
+            }
+            if (item.title.isNotBlank()) Text(item.title, style = MaterialTheme.typography.headlineMedium)
+            else Skeleton(Modifier.fillMaxWidth(0.7f).height(28.dp))
+            val meta = listOfNotNull(
+                SchatkamerText.formatDate(item.date).ifBlank { null },
+                detail?.durationMinutes?.takeIf { it > 0 }?.let { "$it min" },
+                item.broadcaster.ifBlank { null },
+                detail?.episodeNumber?.let { "aflevering $it" }
+            ).joinToString(" · ")
+            if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+    val actions: @Composable () -> Unit = {
+        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            val resumable = progress != null && !progress.isFinished && progress.positionMs > 15_000
+            Button(
+                onClick = { onPlay(item, false) }, enabled = item.title.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = BrandColors.Amber, contentColor = BrandColors.Ink)
+            ) {
+                Icon(if (item.isAudio) Icons.Rounded.Headphones else Icons.Rounded.PlayArrow, null)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    when {
+                        resumable -> "Verder vanaf ${formatTime(progress!!.positionMs)}"
+                        item.isAudio -> "Luisteren"
+                        else -> "Afspelen"
+                    }
+                )
+            }
+            if (resumable) {
+                IconButton(onClick = { onPlay(item, true) }) { Icon(Icons.Rounded.Replay, "Vanaf het begin", tint = BrandColors.Text) }
+            }
+            IconButton(onClick = { library.toggleFavorite(item) }) {
+                Icon(if (isFavorite) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, if (isFavorite) "Uit Mijn lijst halen" else "Bewaren", tint = BrandColors.Amber)
+            }
+            IconButton(onClick = { addToList = true }) {
+                Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, "Toevoegen aan lijst", tint = BrandColors.Text)
+            }
+            val watched = progress?.isFinished == true
+            IconButton(onClick = { library.local.setWatched(item, !watched) }) {
+                Icon(if (watched) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, if (watched) "Gezien" else "Markeer als gezien", tint = if (watched) BrandColors.Amber else BrandColors.Text)
+            }
+            IconButton(onClick = { share(context, item.title, "https://schatkamer.beeldengeluid.nl/programma/$programId") }) {
+                Icon(Icons.Rounded.Share, "Delen", tint = BrandColors.Text)
+            }
+        }
+        if (progress != null && !progress.isFinished && progress.positionMs > 15_000) {
+            LinearProgressIndicator(
+                progress = { progress.fraction }, color = BrandColors.Amber, trackColor = BrandColors.SurfaceHigh,
+                modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(3.dp), drawStopIndicator = {}
+            )
+        }
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= 720.dp
         LazyColumn(contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
-            item {
-                Box(Modifier.fillMaxWidth().aspectRatio(16f / 11f).clickable { if (item.title.isNotBlank()) onPlay(item, false) }) {
-                    Backdrop(item.imageUrl, Modifier.fillMaxSize())
-                    Icon(
-                        if (item.isAudio) Icons.Rounded.Headphones else Icons.Rounded.PlayArrow, "Afspelen",
-                        tint = BrandColors.Ink,
-                        modifier = Modifier.align(Alignment.Center).size(68.dp).clip(CircleShape).background(BrandColors.Amber).padding(14.dp)
-                    )
-                }
-            }
-            item {
-                Column(Modifier.padding(horizontal = 16.dp)) {
-                    item.seriesTitle?.takeIf { it.isNotBlank() }?.let { s ->
-                        Text(
-                            s.uppercase(), style = MaterialTheme.typography.labelMedium, color = BrandColors.Amber,
-                            modifier = Modifier.clickable { item.seriesId?.let { onOpen(SchatkamerItem(id = it, title = s, kind = ItemKind.SERIES, seriesId = it, seriesTitle = s)) } }
-                        )
-                    }
-                    if (item.title.isNotBlank()) Text(item.title, style = MaterialTheme.typography.headlineMedium)
-                    else Skeleton(Modifier.fillMaxWidth(0.7f).height(28.dp))
-                    val meta = listOfNotNull(
-                        SchatkamerText.formatDate(item.date).ifBlank { null },
-                        detail?.durationMinutes?.takeIf { it > 0 }?.let { "$it min" },
-                        item.broadcaster.ifBlank { null },
-                        detail?.episodeNumber?.let { "aflevering $it" }
-                    ).joinToString(" · ")
-                    if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted, modifier = Modifier.padding(top = 4.dp))
-                }
-            }
-            item {
-                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val resumable = progress != null && !progress.isFinished && progress.positionMs > 15_000
-                    Button(
-                        onClick = { onPlay(item, false) }, enabled = item.title.isNotBlank(),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandColors.Amber, contentColor = BrandColors.Ink)
-                    ) {
-                        Icon(if (item.isAudio) Icons.Rounded.Headphones else Icons.Rounded.PlayArrow, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            when {
-                                resumable -> "Verder vanaf ${formatTime(progress!!.positionMs)}"
-                                item.isAudio -> "Luisteren"
-                                else -> "Afspelen"
-                            }
-                        )
-                    }
-                    if (resumable) {
-                        IconButton(onClick = { onPlay(item, true) }) { Icon(Icons.Rounded.Replay, "Vanaf het begin", tint = BrandColors.Text) }
-                    }
-                    IconButton(onClick = { library.toggleFavorite(item) }) {
-                        Icon(if (isFavorite) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, if (isFavorite) "Uit Mijn lijst halen" else "Bewaren", tint = BrandColors.Amber)
-                    }
-                    IconButton(onClick = { addToList = true }) {
-                        Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, "Toevoegen aan lijst", tint = BrandColors.Text)
-                    }
-                    val watched = progress?.isFinished == true
-                    IconButton(onClick = { library.local.setWatched(item, !watched) }) {
-                        Icon(if (watched) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, if (watched) "Gezien" else "Markeer als gezien", tint = if (watched) BrandColors.Amber else BrandColors.Text)
-                    }
-                    IconButton(onClick = { share(context, item.title, "https://schatkamer.beeldengeluid.nl/programma/$programId") }) {
-                        Icon(Icons.Rounded.Share, "Delen", tint = BrandColors.Text)
+            if (wide) {
+                item {
+                    Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                        hero(Modifier.weight(1.1f).aspectRatio(16f / 9f).clip(CardShape))
+                        Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                            titleBlock()
+                            actions()
+                        }
                     }
                 }
-                if (progress != null && !progress.isFinished && progress.positionMs > 15_000) {
-                    LinearProgressIndicator(
-                        progress = { progress.fraction }, color = BrandColors.Amber, trackColor = BrandColors.SurfaceHigh,
-                        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(3.dp), drawStopIndicator = {}
-                    )
-                }
+            } else {
+                item { hero(Modifier.fillMaxWidth().aspectRatio(16f / 11f)) }
+                item { titleBlock() }
+                item { actions() }
             }
             when (val d = detailState) {
                 is Load.Failed -> item { ErrorState(d.message, viewModel::load) }
@@ -468,8 +490,9 @@ fun BrowseScreen(viewModel: BrowseViewModel, spec: BrowseSpec, onOpen: (Schatkam
             }
             CastButton()
         }
+        val columns = LocalListColumns.current
         LazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
-            resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry, lockBroadcaster = spec.broadcaster != null)
+            resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry, lockBroadcaster = spec.broadcaster != null, columns = columns)
         }
     }
 }
@@ -479,6 +502,7 @@ fun BrowseScreen(viewModel: BrowseViewModel, spec: BrowseSpec, onOpen: (Schatkam
 @Composable
 fun StoryScreen(viewModel: StoryViewModel, onOpen: (SchatkamerItem) -> Unit, onBack: () -> Unit, contentPadding: PaddingValues) {
     val story by viewModel.story.collectAsState()
+    val columns = LocalListColumns.current
     Box(Modifier.fillMaxSize()) {
         LazyColumn(contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
             when (val s = story) {
@@ -497,7 +521,7 @@ fun StoryScreen(viewModel: StoryViewModel, onOpen: (SchatkamerItem) -> Unit, onB
                     if (s.data.description.isNotBlank()) item { ExpandableText(s.data.description) }
                     item { SectionHeader("In dit verhaal") }
                     if (s.data.programs.isEmpty()) item { EmptyState("Geen uitzendingen", "Dit verhaal bevat geen uitzendingen om af te spelen.") }
-                    items(s.data.programs, key = { it.id }) { ProgramListItem(it, { onOpen(it) }) }
+                    adaptiveItems(s.data.programs, columns, key = { it.id }) { ProgramListItem(it, { onOpen(it) }) }
                 }
             }
         }

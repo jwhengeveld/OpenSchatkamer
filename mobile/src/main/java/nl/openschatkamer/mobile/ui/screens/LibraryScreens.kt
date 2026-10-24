@@ -101,6 +101,8 @@ import nl.openschatkamer.mobile.ui.components.MessageState
 import nl.openschatkamer.mobile.ui.components.Pill
 import nl.openschatkamer.mobile.ui.components.ProgramCard
 import nl.openschatkamer.mobile.ui.components.ProgramListItem
+import nl.openschatkamer.mobile.ui.components.LocalListColumns
+import nl.openschatkamer.mobile.ui.components.adaptiveItems
 import nl.openschatkamer.mobile.ui.components.ScreenTitle
 import nl.openschatkamer.mobile.ui.components.SectionHeader
 import nl.openschatkamer.mobile.ui.components.SeriesPoster
@@ -360,8 +362,9 @@ fun ListScreen(
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Pill("Alles afspelen", { onPlay(state.data.first()) }, selected = true, leading = Icons.AutoMirrored.Rounded.PlaylistPlay)
                 }
+                val columns = LocalListColumns.current
                 LazyColumn(contentPadding = contentPadding) {
-                    items(state.data, key = { it.id }) { item ->
+                    adaptiveItems(state.data, columns, key = { it.id }) { item ->
                         ProgramListItem(item, { onOpen(item) }, trailing = {
                             IconButton(onClick = {
                                 if (list != null) { library.toggleInList(list, item); viewModel.reload() } else library.local.removeFavorite(item.id)
@@ -399,10 +402,11 @@ fun HistoryScreen(library: UserLibrary, onOpen: (SchatkamerItem) -> Unit, onBack
             Text("Kijkgeschiedenis", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             if (history.isNotEmpty()) TextButton(onClick = { confirm = true }) { Text("Wissen", color = BrandColors.TextMuted) }
         }
+        val columns = LocalListColumns.current
         if (history.isEmpty()) {
             MessageState(Icons.Rounded.History, "Nog niets bekeken", "Wat je bekijkt of beluistert, verschijnt hier. De geschiedenis blijft op dit toestel.")
         } else LazyColumn(contentPadding = contentPadding) {
-            items(history, key = { it.item.id }) { w ->
+            adaptiveItems(history, columns, key = { it.item.id }) { w ->
                 ProgramListItem(w.item, { onOpen(w.item) }, progress = if (w.isFinished) null else w.fraction, trailing = {
                     IconButton(onClick = { library.local.removeFromHistory(w.item.id) }) { Icon(Icons.Rounded.Close, "Verwijderen", tint = BrandColors.TextMuted) }
                 })

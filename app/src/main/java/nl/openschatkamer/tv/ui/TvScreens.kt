@@ -103,7 +103,7 @@ fun TvHomeScreen(
     Box(Modifier.fillMaxSize()) {
         androidx.compose.animation.Crossfade(focused?.imageUrl, label = "achtergrond", modifier = Modifier.fillMaxWidth().fillMaxHeight(0.62f).align(Alignment.TopEnd)) { url ->
             Box(Modifier.fillMaxSize()) {
-                TvArtwork(url, Modifier.fillMaxSize())
+                if (url != null) TvArtwork(url, Modifier.fillMaxSize())
                 val f = focused
                 if (video != null && previewEnabled && f != null && f.imageUrl == url && f.kind == ItemKind.PROGRAM && !f.isAudio) {
                     TvBackdropPreview(f, video, Modifier.fillMaxSize())
@@ -130,7 +130,7 @@ fun TvHomeScreen(
             }
             LazyColumn(contentPadding = PaddingValues(start = 32.dp, end = 40.dp, bottom = 40.dp), modifier = Modifier.fillMaxSize().focusRestorer()) {
                 when (val h = home) {
-                    Load.Loading -> item { TvLoading() }
+                    Load.Loading -> item { TvSkeletonRows() }
                     is Load.Failed -> item { TvMessage("Dat lukte even niet", h.message, "Opnieuw", viewModel::refresh) }
                     is Load.Ready -> {
                         if (continueWatching.isNotEmpty()) {
@@ -208,7 +208,10 @@ private fun TvResultsGrid(
         }
         item(span = { GridItemSpan(maxLineSpan) }) { TvFilters(state, viewModel) }
         when {
-            state.isLoading -> item(span = { GridItemSpan(maxLineSpan) }) { TvLoading() }
+            state.isLoading -> items(10) {
+                // Voorlopige kaarten in het raster terwijl de resultaten laden.
+                TvSkeletonCard(rememberTvShimmer(), Modifier.fillMaxWidth())
+            }
             state.error != null -> item(span = { GridItemSpan(maxLineSpan) }) { TvMessage("Dat lukte even niet", state.error!!, "Opnieuw", viewModel::retry) }
             state.loaded && state.items.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { TvMessage("Niets gevonden", "Probeer een andere zoekterm of minder filters.") }
             else -> {

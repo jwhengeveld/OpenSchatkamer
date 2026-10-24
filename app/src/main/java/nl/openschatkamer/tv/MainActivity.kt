@@ -225,6 +225,9 @@ class MainActivity : ComponentActivity() {
         var contentHasFocus by remember { mutableStateOf(false) }
         var userMoved by remember { mutableStateOf(false) }
         var sideNavHasFocus by remember { mutableStateOf(false) }
+        // Pas na de eerste druk op de afstandsbediening mag de zijbalk uitklappen;
+        // bij het opstarten staat de focus er soms even voordat de inhoud er is.
+        var remoteUsed by remember { mutableStateOf(false) }
         val backStack by nav.currentBackStackEntryAsState()
         LaunchedEffect(backStack?.id, playing == null) {
             if (playing != null) return@LaunchedEffect
@@ -252,7 +255,7 @@ class MainActivity : ComponentActivity() {
                             androidx.compose.ui.input.key.Key.DirectionUp, androidx.compose.ui.input.key.Key.DirectionDown,
                             androidx.compose.ui.input.key.Key.DirectionLeft, androidx.compose.ui.input.key.Key.DirectionRight
                         )
-                    ) userMoved = true
+                    ) { userMoved = true; remoteUsed = true }
                     false
                 }
         ) {
@@ -314,7 +317,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                Box(Modifier.onFocusChanged { sideNavHasFocus = it.hasFocus }) { SideNav(nav) }
+                Box(Modifier.onFocusChanged { sideNavHasFocus = it.hasFocus }) { SideNav(nav, canExpand = remoteUsed) }
             }
 
             playing?.let { (item, fromStart) ->
@@ -355,7 +358,7 @@ private val SIDE_NAV_EXPANDED = 220.dp
  * over de inhoud heen.
  */
 @Composable
-private fun SideNav(nav: NavHostController) {
+private fun SideNav(nav: NavHostController, canExpand: Boolean = true) {
     val entry by nav.currentBackStackEntryAsState()
     val current = entry?.destination?.route
     // Het tabblad waar je bent; diepere schermen horen bij het tabblad waar je vandaan kwam.
@@ -363,7 +366,8 @@ private fun SideNav(nav: NavHostController) {
         ?: ENTRIES.indexOfLast { e -> e.route != Dest.HOME && nav.currentBackStack.value.any { it.destination.route == e.route } }.takeIf { it >= 0 }
         ?: 0
     val requesters = remember { ENTRIES.map { FocusRequester() } }
-    var expanded by remember { mutableStateOf(false) }
+    var hasFocus by remember { mutableStateOf(false) }
+    val expanded = hasFocus && canExpand
     val width by androidx.compose.animation.core.animateDpAsState(if (expanded) SIDE_NAV_EXPANDED else SIDE_NAV_COLLAPSED, label = "zijbalk")
     Box(Modifier.fillMaxHeight()) {
         // Schaduw over de inhoud als de zijbalk open is.
@@ -376,7 +380,7 @@ private fun SideNav(nav: NavHostController) {
         Column(
             Modifier
                 .fillMaxHeight().width(width).background(BrandColors.Surface).padding(vertical = 28.dp, horizontal = 10.dp)
-                .onFocusChanged { expanded = it.hasFocus }
+                .onFocusChanged { hasFocus = it.hasFocus }
                 // Naar links de zijbalk in: altijd op het actieve tabblad landen.
                 .focusProperties { enter = { requesters[activeIndex] } }
                 .focusGroup(),

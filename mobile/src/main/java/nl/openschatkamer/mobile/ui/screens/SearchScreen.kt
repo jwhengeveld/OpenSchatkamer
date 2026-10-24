@@ -71,6 +71,8 @@ import nl.openschatkamer.mobile.ui.components.ErrorState
 import nl.openschatkamer.mobile.ui.components.FilterBar
 import nl.openschatkamer.mobile.ui.components.LoadingFooter
 import nl.openschatkamer.mobile.ui.components.ProgramListItem
+import nl.openschatkamer.mobile.ui.components.LocalListColumns
+import nl.openschatkamer.mobile.ui.components.adaptiveItems
 import nl.openschatkamer.mobile.ui.components.ScreenTitle
 import nl.openschatkamer.mobile.ui.components.SectionHeader
 import nl.openschatkamer.mobile.ui.components.SeriesPoster
@@ -147,6 +149,7 @@ fun SearchScreen(
             )
         }
 
+        val columns = LocalListColumns.current
         LazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
             // Suggesties tijdens het typen.
             if (suggestions.isNotEmpty() && text.isNotBlank() && text.trim() != state.filter.query) {
@@ -176,8 +179,8 @@ fun SearchScreen(
                 }
             }
             when (tab) {
-                SearchTab.ALL -> resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry)
-                SearchTab.PROGRAMS -> resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry, showSeries = false)
+                SearchTab.ALL -> resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry, columns = columns)
+                SearchTab.PROGRAMS -> resultsContent(state, onOpen, onFilter = { viewModel.setFilter(it) }, onRetry = viewModel::retry, showSeries = false, columns = columns)
                 SearchTab.SERIES -> {
                     if (state.series.isEmpty() && state.facets.programs.isEmpty()) item { EmptyState("Geen series", "Geen serie past bij deze zoekterm.") }
                     items(state.series.chunked(3), key = { row -> "sr_" + row.first().id }) { row ->
@@ -235,7 +238,8 @@ fun androidx.compose.foundation.lazy.LazyListScope.resultsContent(
     onRetry: () -> Unit,
     showSeries: Boolean = true,
     showSeriesLabel: Boolean = true,
-    lockBroadcaster: Boolean = false
+    lockBroadcaster: Boolean = false,
+    columns: Int = 1
 ) {
     if (showSeries && state.series.isNotEmpty()) {
         item(key = "series") {
@@ -269,7 +273,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.resultsContent(
             )
         }
         else -> {
-            items(state.items, key = { "p_${it.id}" }) { ProgramListItem(it, { onOpen(it) }, showSeries = showSeriesLabel) }
+            adaptiveItems(state.items, columns, key = { "p_${it.id}" }) { ProgramListItem(it, { onOpen(it) }, showSeries = showSeriesLabel) }
             if (state.isLoadingMore) item { LoadingFooter() }
         }
     }
