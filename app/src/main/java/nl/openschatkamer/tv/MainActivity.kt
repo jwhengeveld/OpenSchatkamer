@@ -2,6 +2,7 @@
 
 package nl.openschatkamer.tv
 
+import kotlinx.coroutines.launch
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -37,6 +38,9 @@ import androidx.compose.runtime.key
 import nl.openschatkamer.core.ui.AccountViewModel
 import nl.openschatkamer.core.ui.ListViewModel
 import nl.openschatkamer.core.ui.TimeTravelViewModel
+import nl.openschatkamer.tv.ui.TvFocusRegistry
+import nl.openschatkamer.tv.ui.LocalTvFocusRegistry
+import nl.openschatkamer.tv.ui.focusKey
 import nl.openschatkamer.tv.ui.LocalTvItemActions
 import nl.openschatkamer.tv.ui.LocalTvItemStates
 import nl.openschatkamer.tv.ui.TvAccountScreen
@@ -167,7 +171,17 @@ class MainActivity : ComponentActivity() {
         var playing by remember { mutableStateOf<Pair<SchatkamerItem, Boolean>?>(null) }
         var actionItem by remember { mutableStateOf<SchatkamerItem?>(null) }
 
-        val open: (SchatkamerItem) -> Unit = { item ->
+        val focusRegistry = remember { TvFocusRegistry() }
+        // Per scherm: de kaart waarmee je verder ging, om bij Terug daar weer te landen.
+        val focusMemory = remember { HashMap<String, String>() }
+        var lastOpen by remember { mutableStateOf(0L to "") }
+        val open: (SchatkamerItem) -> Unit = open@{ item ->
+            // Nog een keer OK terwijl de pagina laadt: niet nog een keer openen,
+            // anders moet je daarna meerdere keren op Terug drukken.
+            val now = System.currentTimeMillis()
+            if (lastOpen.second == item.focusKey() && now - lastOpen.first < 1_500) return@open
+            lastOpen = now to item.focusKey()
+            nav.currentBackStackEntry?.id?.let { focusMemory[it] = item.focusKey() }
             ItemMemo.remember(item)
             when (item.kind) {
                 ItemKind.PROGRAM -> nav.navigate("program/${item.id}")
@@ -229,33 +243,66 @@ class MainActivity : ComponentActivity() {
         // bij het opstarten staat de focus er soms even voordat de inhoud er is.
         var remoteUsed by remember { mutableStateOf(false) }
         val backStack by nav.currentBackStackEntryAsState()
+        // Wanneer de pagina voor het laatst wisselde, en welke pijl je het laatst gebruikte.
+        var pageChangedAt by remember { mutableStateOf(0L) }
+        var lastArrow by remember { mutableStateOf<androidx.compose.ui.input.key.Key?>(null) }
+        val focusScope = androidx.compose.runtime.rememberCoroutineScope()
         LaunchedEffect(backStack?.id, playing == null) {
+            pageChangedAt = System.currentTimeMillis()
+            lastArrow = null
             if (playing != null) return@LaunchedEffect
             userMoved = false
-            kotlinx.coroutines.delay(600)
-            // Altijd minstens één keer: als het scherm met de focus net is weggehaald,
-            // klopt contentHasFocus soms nog niet.
-            contentFocus.requestFocusSafely()
+            // Terug op een scherm: eerst de kaart waar je vandaan kwam.
+            val target = backStack?.id?.let { focusMemory[it] }
+            if (target != null) {
+                focusRegistry.focusedKey = null
+                val until = System.currentTimeMillis() + 1_200
+                while (!userMoved && System.currentTimeMillis() < until && focusRegistry.focusedKey != target) {
+                    focusRegistry.requesters[target]?.let { r -> runCatching { r.requestFocus() } }
+                    kotlinx.coroutines.delay(120)
+                }
+            }
+            if (target == null || focusRegistry.focusedKey != target) {
+                kotlinx.coroutines.delay(600)
+                // Altijd minstens één keer: als het scherm met de focus net is weggehaald,
+                // klopt contentHasFocus soms nog niet.
+                if (!userMoved) contentFocus.requestFocusSafely()
+            }
+            // Blijf even opletten: na het sluiten van de speler zet Android de focus
+            // soms alsnog op het eerste element (de zijbalk). Zolang de gebruiker
+            // niets doet, zetten we hem dan terug in de inhoud.
             val until = System.currentTimeMillis() + 20_000
+            var stableSince = 0L
             while (!userMoved && System.currentTimeMillis() < until) {
-                kotlinx.coroutines.delay(250)
-                if (contentHasFocus && !sideNavHasFocus) break
-                contentFocus.requestFocusSafely()
+                kotlinx.coroutines.delay(150)
+                if (contentHasFocus && !sideNavHasFocus) {
+                    if (stableSince == 0L) stableSince = System.currentTimeMillis()
+                    if (System.currentTimeMillis() - stableSince > 1_500) break
+                } else {
+                    stableSince = 0L
+                    val back = target?.let { focusRegistry.requesters[it] }
+                    if (back != null) runCatching { back.requestFocus() } else contentFocus.requestFocusSafely()
+                }
             }
         }
 
-        CompositionLocalProvider(LocalTvItemActions provides { actionItem = it }, LocalTvItemStates provides itemStates) {
+        CompositionLocalProvider(LocalTvItemActions provides { actionItem = it }, LocalTvItemStates provides itemStates, LocalTvFocusRegistry provides focusRegistry) {
         Box(
             Modifier
                 .fillMaxSize()
                 .background(BrandColors.Ink)
                 .onPreviewKeyEvent { event ->
+                    val ok = event.key == androidx.compose.ui.input.key.Key.DirectionCenter ||
+                        event.key == androidx.compose.ui.input.key.Key.Enter || event.key == androidx.compose.ui.input.key.Key.NumPadEnter
+                    // Nog een keer OK terwijl een nieuwe pagina opent: negeren, anders opent
+                    // die druk daar meteen iets en moet je daarna meerdere keren terug.
+                    if (ok && playing == null && System.currentTimeMillis() - pageChangedAt < 800) return@onPreviewKeyEvent true
                     if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
                         event.key in listOf(
                             androidx.compose.ui.input.key.Key.DirectionUp, androidx.compose.ui.input.key.Key.DirectionDown,
                             androidx.compose.ui.input.key.Key.DirectionLeft, androidx.compose.ui.input.key.Key.DirectionRight
                         )
-                    ) { userMoved = true; remoteUsed = true }
+                    ) { userMoved = true; remoteUsed = true; lastArrow = event.key }
                     false
                 }
         ) {
@@ -317,7 +364,15 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                Box(Modifier.onFocusChanged { sideNavHasFocus = it.hasFocus }) { SideNav(nav, canExpand = remoteUsed) }
+                Box(Modifier.onFocusChanged { state ->
+                    val gained = state.hasFocus && !sideNavHasFocus
+                    sideNavHasFocus = state.hasFocus
+                    // De zijbalk alleen als je er zelf naartoe gaat (links, of omhoog/omlaag erin).
+                    // Komt de focus er vanzelf (pagina weg, speler dicht), dan terug naar de inhoud.
+                    if (gained && lastArrow != androidx.compose.ui.input.key.Key.DirectionLeft) {
+                        focusScope.launch { contentFocus.requestFocusSafely() }
+                    }
+                }) { SideNav(nav, canExpand = remoteUsed) }
             }
 
             playing?.let { (item, fromStart) ->

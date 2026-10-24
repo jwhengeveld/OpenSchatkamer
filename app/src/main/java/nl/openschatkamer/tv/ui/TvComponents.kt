@@ -124,6 +124,17 @@ val LocalTvFocusSink = androidx.compose.runtime.staticCompositionLocalOf<(Schatk
 /** Lang op OK drukken op een kaart: het actiemenu. */
 val LocalTvItemActions = androidx.compose.runtime.staticCompositionLocalOf<(SchatkamerItem) -> Unit> { {} }
 
+/**
+ * Onthoudt welke kaarten er op het scherm staan, zodat de focus na Terug weer op
+ * de kaart komt waar je vandaan kwam.
+ */
+class TvFocusRegistry {
+    val requesters = HashMap<String, androidx.compose.ui.focus.FocusRequester>()
+    var focusedKey: String? = null
+}
+val LocalTvFocusRegistry = androidx.compose.runtime.staticCompositionLocalOf { TvFocusRegistry() }
+fun SchatkamerItem.focusKey(): String = kind.name + ":" + id
+
 /** Kaartstatus (nieuw, voortgang, gezien) zoals op de telefoon. */
 interface TvItemStates {
     fun isNew(item: SchatkamerItem): Boolean = false
@@ -148,8 +159,18 @@ fun Modifier.tvFocusable(onClick: () -> Unit, shape: Shape = TvShape, scaleTo: F
     )
     val sink = LocalTvFocusSink.current
     val actions = LocalTvItemActions.current
-    if (item != null) androidx.compose.runtime.LaunchedEffect(focused) { if (focused) sink(item) }
+    val registry = LocalTvFocusRegistry.current
+    val requester = remember { androidx.compose.ui.focus.FocusRequester() }
+    if (item != null) {
+        val key = item.focusKey()
+        androidx.compose.runtime.LaunchedEffect(focused) { if (focused) { sink(item); registry.focusedKey = key } }
+        androidx.compose.runtime.DisposableEffect(key) {
+            registry.requesters[key] = requester
+            onDispose { if (registry.requesters[key] === requester) registry.requesters.remove(key) }
+        }
+    }
     return this
+        .focusRequester(requester)
         .scale(scale)
         .border(if (focused) 3.dp else 0.dp, if (focused) BrandColors.Amber else Color.Transparent, shape)
         .clip(shape)
