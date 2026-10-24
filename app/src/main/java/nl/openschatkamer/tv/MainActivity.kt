@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package nl.openschatkamer.tv
 
 import android.os.Bundle
@@ -54,6 +56,10 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -183,23 +189,39 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Na elke navigatie hoort de focus in de inhoud, niet in de zijbalk.
+        // Na elke navigatie hoort de focus in de inhoud, niet in de zijbalk. De inhoud
+        // laadt soms nog (koude start); blijf het proberen tot hij er is, maar stop
+        // zodra de gebruiker zelf een pijltje gebruikt, zodat we nooit de focus afpakken.
         val contentFocus = remember { FocusRequester() }
         var contentHasFocus by remember { mutableStateOf(false) }
+        var userMoved by remember { mutableStateOf(false) }
         val backStack by nav.currentBackStackEntryAsState()
         LaunchedEffect(backStack?.id, playing == null) {
             if (playing != null) return@LaunchedEffect
-            kotlinx.coroutines.delay(750)
-            contentFocus.requestFocusSafely()
-            repeat(15) {
-                kotlinx.coroutines.delay(250)
-                if (contentHasFocus) return@LaunchedEffect
+            userMoved = false
+            kotlinx.coroutines.delay(600)
+            val until = System.currentTimeMillis() + 20_000
+            while (!contentHasFocus && !userMoved && System.currentTimeMillis() < until) {
                 contentFocus.requestFocusSafely()
+                kotlinx.coroutines.delay(250)
             }
         }
 
         CompositionLocalProvider(LocalTvItemActions provides { actionItem = it }, LocalTvItemStates provides itemStates) {
-        Box(Modifier.fillMaxSize().background(BrandColors.Ink)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(BrandColors.Ink)
+                .onPreviewKeyEvent { event ->
+                    if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                        event.key in listOf(
+                            androidx.compose.ui.input.key.Key.DirectionUp, androidx.compose.ui.input.key.Key.DirectionDown,
+                            androidx.compose.ui.input.key.Key.DirectionLeft, androidx.compose.ui.input.key.Key.DirectionRight
+                        )
+                    ) userMoved = true
+                    false
+                }
+        ) {
             Row(Modifier.fillMaxSize()) {
                 SideNav(nav)
                 Box(
@@ -290,18 +312,28 @@ private val ENTRIES = listOf(
 private fun SideNav(nav: NavHostController) {
     val entry by nav.currentBackStackEntryAsState()
     val current = entry?.destination?.route
+    // Het tabblad waar je bent; diepere schermen horen bij het tabblad waar je vandaan kwam.
+    val activeIndex = ENTRIES.indexOfFirst { it.route == current }.takeIf { it >= 0 }
+        ?: ENTRIES.indexOfLast { e -> e.route != Dest.HOME && nav.currentBackStack.value.any { it.destination.route == e.route } }.takeIf { it >= 0 }
+        ?: 0
+    val requesters = remember { ENTRIES.map { FocusRequester() } }
     Column(
-        Modifier.fillMaxHeight().width(124.dp).background(BrandColors.Surface).padding(vertical = 28.dp),
+        Modifier
+            .fillMaxHeight().width(124.dp).background(BrandColors.Surface).padding(vertical = 28.dp)
+            // Naar links de zijbalk in: altijd op het actieve tabblad landen (zoals Google TV).
+            .focusProperties { enter = { requesters[activeIndex] } }
+            .focusGroup(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Spacer(Modifier.height(40.dp))
-        ENTRIES.forEach { e ->
+        ENTRIES.forEachIndexed { index, e ->
             val interaction = remember { MutableInteractionSource() }
             val focused by interaction.collectIsFocusedAsState()
-            val selected = current == e.route
+            val selected = index == activeIndex
             Column(
                 Modifier
+                    .focusRequester(requesters[index])
                     .clip(RoundedCornerShape(14.dp))
                     .background(
                         when {

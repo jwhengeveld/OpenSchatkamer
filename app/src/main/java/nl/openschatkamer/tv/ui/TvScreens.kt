@@ -46,6 +46,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.sp
 import nl.openschatkamer.brand.BrandColors
 import nl.openschatkamer.brand.UNOFFICIAL_NOTICE
@@ -191,7 +193,11 @@ private fun TvResultsGrid(
         verticalArrangement = Arrangement.spacedBy(28.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { header() }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            // Focus in de kop (zoekveld, knoppen): helemaal naar boven, zodat titel en veld zichtbaar zijn.
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            Box(Modifier.onFocusChanged { if (it.hasFocus) scope.launch { gridState.animateScrollToItem(0) } }) { header() }
+        }
         if (state.series.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
@@ -253,15 +259,7 @@ fun TvSearchScreen(viewModel: SearchViewModel, onOpen: (SchatkamerItem) -> Unit)
     TvResultsGrid(state, viewModel, onOpen, header = {
         Column {
             Text("Zoeken", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
-            OutlinedTextField(
-                value = text, onValueChange = viewModel::onTextChange, singleLine = true,
-                placeholder = { Text("Programma, persoon, onderwerp of jaar") },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { viewModel.submit() }),
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = BrandColors.Amber, cursorColor = BrandColors.Amber),
-                modifier = Modifier.padding(horizontal = 8.dp).width(720.dp)
-            )
+            TvSearchField(text, viewModel::onTextChange, onSearch = { viewModel.submit() }, modifier = Modifier.padding(horizontal = 8.dp).width(720.dp))
             val chips = suggestions.ifEmpty { if (text.isBlank()) history.ifEmpty { listOf("Polygoon", "Jiskefet", "Swiebertje", "Toppop", "Elfstedentocht") } else emptyList() }
             if (chips.isNotEmpty()) {
                 LazyRow(contentPadding = PaddingValues(8.dp, 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -406,7 +404,9 @@ fun TvProgramScreen(
             Box(Modifier.fillMaxSize()) {
                 TvArtwork(p.imageUrl, Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to BrandColors.Ink, 0.55f to BrandColors.Ink.copy(alpha = 0.85f), 1f to BrandColors.Ink.copy(alpha = 0.3f))))
-                LazyColumn(contentPadding = SCREEN_PADDING, modifier = Modifier.fillMaxSize()) {
+                val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+                val scope = androidx.compose.runtime.rememberCoroutineScope()
+                LazyColumn(state = listState, contentPadding = SCREEN_PADDING, modifier = Modifier.fillMaxSize()) {
                     item {
                         Column(Modifier.padding(start = 8.dp, top = 40.dp).width(760.dp)) {
                             p.seriesTitle?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber) }
@@ -417,7 +417,11 @@ fun TvProgramScreen(
                                 p.broadcaster.ifBlank { null }
                             ).joinToString(" · ")
                             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyLarge, color = BrandColors.TextMuted)
-                            Row(Modifier.padding(vertical = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Row(
+                                // De knoppen bovenaan: scroll terug naar de titel.
+                                Modifier.padding(vertical = 20.dp).onFocusChanged { if (it.hasFocus) scope.launch { listState.animateScrollToItem(0) } },
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
                                 val resumable = progress != null && !progress.isFinished && progress.positionMs > 15_000
                                 TvPill(if (resumable) "▶  Verder kijken" else if (p.isAudio) "▶  Luisteren" else "▶  Afspelen", { onPlay(item, false) }, selected = true)
                                 if (resumable) TvPill("Vanaf het begin", { onPlay(item, true) })
@@ -610,11 +614,9 @@ fun TvAccountScreen(viewModel: AccountViewModel, onBack: () -> Unit) {
                     }
                     state.pendingCode != null -> {
                         Text(state.pendingCode!!.hint, style = MaterialTheme.typography.bodyLarge)
-                        OutlinedTextField(
-                            value = code, onValueChange = { code = it.filter(Char::isDigit).take(8) }, singleLine = true, label = { Text("Code") },
-                            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = { viewModel.confirmCode(code) }), colors = fieldColors,
-                            modifier = Modifier.padding(top = 12.dp).width(420.dp)
+                        TvInputField(
+                            code, { code = it.filter(Char::isDigit).take(8) }, "Code", Modifier.padding(top = 12.dp).width(420.dp),
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword, onSubmit = { viewModel.confirmCode(code) }
                         )
                         state.error?.let { Text(it, color = BrandColors.Danger, modifier = Modifier.padding(top = 8.dp)) }
                         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -627,17 +629,13 @@ fun TvAccountScreen(viewModel: AccountViewModel, onBack: () -> Unit) {
                             "Log in met het account dat je op schatkamer.beeldengeluid.nl hebt gemaakt. Zonder account werkt alles ook, alleen op deze tv.",
                             style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted
                         )
-                        OutlinedTextField(
-                            value = email, onValueChange = { email = it.trim() }, singleLine = true, label = { Text("E-mailadres") },
-                            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email, imeAction = ImeAction.Next),
-                            colors = fieldColors, modifier = Modifier.padding(top = 16.dp).width(520.dp)
+                        TvInputField(
+                            email, { email = it.trim() }, "Kies om je e-mailadres in te voeren", Modifier.padding(top = 16.dp).width(560.dp),
+                            label = "E-MAILADRES", keyboardType = androidx.compose.ui.text.input.KeyboardType.Email
                         )
-                        OutlinedTextField(
-                            value = password, onValueChange = { password = it }, singleLine = true, label = { Text("Wachtwoord") },
-                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password, imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = { viewModel.signIn(email, password) }),
-                            colors = fieldColors, modifier = Modifier.padding(top = 10.dp).width(520.dp)
+                        TvInputField(
+                            password, { password = it }, "Kies om je wachtwoord in te voeren", Modifier.padding(top = 12.dp).width(560.dp),
+                            label = "WACHTWOORD", password = true, keyboardType = androidx.compose.ui.text.input.KeyboardType.Password
                         )
                         state.error?.let { Text(it, color = BrandColors.Danger, modifier = Modifier.padding(top = 10.dp)) }
                         Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {

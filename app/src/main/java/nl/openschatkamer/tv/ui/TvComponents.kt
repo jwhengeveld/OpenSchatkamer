@@ -43,6 +43,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -277,6 +284,116 @@ fun TvPill(text: String, onClick: () -> Unit, selected: Boolean = false) {
             .padding(horizontal = 18.dp, vertical = 10.dp)
     )
 }
+
+/**
+ * Tekstvelden op de tv houden de pijltjes vast (die verplaatsen de cursor).
+ * Hiermee gaan omhoog en omlaag gewoon naar het vorige of volgende element,
+ * zodat je nooit vastzit in een veld.
+ */
+@Composable
+fun Modifier.tvTextFieldNavigation(): Modifier {
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    return this.onPreviewKeyEvent { event ->
+        if (event.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
+        when (event.key) {
+            androidx.compose.ui.input.key.Key.DirectionDown -> focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+            androidx.compose.ui.input.key.Key.DirectionUp -> focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Up)
+            else -> false
+        }
+    }
+}
+
+/**
+ * Invoerveld voor de tv: een knop met de waarde. OK opent het toetsenbord;
+ * klaar, Terug of omhoog/omlaag sluit het weer. Zo komt de afstandsbediening
+ * nooit vast te zitten in een tekstveld, en springt het toetsenbord niet
+ * vanzelf open als een scherm verschijnt.
+ */
+@Composable
+fun TvInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    password: Boolean = false,
+    keyboardType: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text,
+    imeAction: androidx.compose.ui.text.input.ImeAction = androidx.compose.ui.text.input.ImeAction.Done,
+    leading: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    onSubmit: () -> Unit = {}
+) {
+    var editing by remember { mutableStateOf(false) }
+    val fieldFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val buttonFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    var wasEditing by remember { mutableStateOf(false) }
+    fun stopEditing(submit: Boolean) {
+        keyboard?.hide()
+        editing = false
+        if (submit) onSubmit()
+    }
+    androidx.compose.runtime.LaunchedEffect(editing) {
+        if (editing) { wasEditing = true; runCatching { fieldFocus.requestFocus(); keyboard?.show() } }
+        else if (wasEditing) runCatching { buttonFocus.requestFocus() }
+    }
+    Column(modifier) {
+        if (label != null) Text(label, style = MaterialTheme.typography.labelSmall, color = BrandColors.TextMuted, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
+        if (editing) {
+            androidx.activity.compose.BackHandler { stopEditing(submit = false) }
+            androidx.compose.material3.OutlinedTextField(
+                value = value, onValueChange = onValueChange, singleLine = true,
+                placeholder = { Text(placeholder) },
+                visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { stopEditing(true) }, onDone = { stopEditing(true) }, onNext = { stopEditing(true) }, onGo = { stopEditing(true) }
+                ),
+                shape = RoundedCornerShape(14.dp),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = BrandColors.Amber, cursorColor = BrandColors.Amber),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(fieldFocus)
+                    .onPreviewKeyEvent { event ->
+                        val vertical = event.key == androidx.compose.ui.input.key.Key.DirectionDown || event.key == androidx.compose.ui.input.key.Key.DirectionUp
+                        if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && vertical) { stopEditing(submit = imeAction == androidx.compose.ui.text.input.ImeAction.Search); true } else false
+                    }
+            )
+        } else {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .focusRequester(buttonFocus)
+                    .tvFocusable({ editing = true }, RoundedCornerShape(14.dp), 1.02f)
+                    .background(BrandColors.SurfaceHigh)
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (leading != null) {
+                    Icon(leading, null, tint = BrandColors.Amber)
+                    Spacer(Modifier.width(14.dp))
+                }
+                Text(
+                    when {
+                        value.isBlank() -> placeholder
+                        password -> "•".repeat(value.length.coerceAtMost(16))
+                        else -> value
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (value.isBlank()) BrandColors.TextMuted else BrandColors.Text
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TvSearchField(text: String, onTextChange: (String) -> Unit, onSearch: () -> Unit, modifier: Modifier = Modifier) =
+    TvInputField(
+        text, onTextChange, "Zoeken: programma, persoon, onderwerp of jaar", modifier,
+        imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+        leading = androidx.compose.material.icons.Icons.Rounded.Search,
+        onSubmit = onSearch
+    )
 
 @Composable
 fun TvLoading(modifier: Modifier = Modifier) {
