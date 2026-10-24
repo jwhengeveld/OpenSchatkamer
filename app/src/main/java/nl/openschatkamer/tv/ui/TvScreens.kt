@@ -82,6 +82,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Search
 
 private val SCREEN_PADDING = PaddingValues(start = 32.dp, end = 40.dp, top = 20.dp, bottom = 40.dp)
 
@@ -183,7 +184,8 @@ private fun TvResultsGrid(
     header: @Composable () -> Unit,
     progressOf: (String) -> Float? = { null },
     gridState: LazyGridState = rememberLazyGridState(),
-    showSeries: Boolean = true
+    showSeries: Boolean = true,
+    mode: TvSearchMode = TvSearchMode.ALL
 ) {
     val nearEnd by remember {
         derivedStateOf {
@@ -207,7 +209,18 @@ private fun TvResultsGrid(
             val scope = androidx.compose.runtime.rememberCoroutineScope()
             Box(Modifier.onFocusChanged { if (it.hasFocus) scope.launch { gridState.animateScrollToItem(0) } }) { header() }
         }
-        if (showSeries && state.series.isNotEmpty()) {
+        if (mode == TvSearchMode.SERIES) {
+            // Alleen series, als raster van posters.
+            if (state.isLoading) item(span = { GridItemSpan(maxLineSpan) }) { TvSkeletonRows(1) }
+            else if (state.loaded && state.series.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { TvMessage("Geen series gevonden", "Probeer Afleveringen, of een andere zoekterm.") }
+            else item(span = { GridItemSpan(maxLineSpan) }) {
+                FlowRow(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+                    state.series.forEach { TvSeriesPoster(it, { onOpen(it) }, width = 150.dp) }
+                }
+            }
+            return@LazyVerticalGrid
+        }
+        if (showSeries && mode == TvSearchMode.ALL && state.series.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
                     TvRowTitle("Series")
@@ -252,7 +265,8 @@ private fun TvFilters(state: QueryState, viewModel: PagedQueryViewModel) {
         }
         if (state.loaded) {
             Text(
-                "${state.total.coerceAtMost(10_000)}${if (state.total >= 10_000) "+" else ""} uitzendingen",
+                "${state.total.coerceAtMost(10_000)}${if (state.total >= 10_000) "+" else ""} uitzendingen" +
+                    (state.completedQuery?.let { " voor \u201c$it\u201d" } ?: ""),
                 style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted, modifier = Modifier.padding(start = 8.dp, top = 4.dp)
             )
         }
@@ -263,17 +277,23 @@ private fun TvFilters(state: QueryState, viewModel: PagedQueryViewModel) {
 
 @Composable
 fun TvSearchScreen(viewModel: SearchViewModel, onOpen: (SchatkamerItem) -> Unit) {
+    var mode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(TvSearchMode.ALL) }
     val state by viewModel.state.collectAsState()
     val text by viewModel.text.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
     val history by viewModel.history.collectAsState()
 
-    TvResultsGrid(state, viewModel, onOpen, header = {
+    TvResultsGrid(state, viewModel, onOpen, mode = mode, header = {
         Column {
             Text("Zoeken", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TvSearchField(text, viewModel::onTextChange, onSearch = { viewModel.submit() }, modifier = Modifier.padding(horizontal = 8.dp).width(720.dp))
                 TvVoiceSearchButton { viewModel.submit(it) }
+            }
+            if (state.filter.query.isNotBlank()) {
+                TvLazyRow(contentPadding = PaddingValues(8.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(TvSearchMode.entries) { m -> TvPill(m.label, { mode = m }, selected = mode == m) }
+                }
             }
             val chips = suggestions.ifEmpty { if (text.isBlank()) history.ifEmpty { listOf("Polygoon", "Jiskefet", "Swiebertje", "Toppop", "Elfstedentocht") } else emptyList() }
             if (chips.isNotEmpty()) {
@@ -308,6 +328,9 @@ private fun TvVoiceSearchButton(onResult: (String) -> Unit) {
             .padding(14.dp)
     )
 }
+
+/** Wat het zoekscherm toont. */
+enum class TvSearchMode(val label: String) { ALL("Alles"), SERIES("Series"), EPISODES("Afleveringen") }
 
 // ---------------------------------------------------------------- bladeren
 
@@ -444,11 +467,19 @@ fun TvSeriesScreen(
                 ).joinToString(" · ")
                 if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyLarge, color = BrandColors.TextMuted)
                 if (!data?.summary.isNullOrBlank()) Text(data!!.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp))
-                Row(Modifier.padding(top = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    state.items.firstOrNull()?.let { first -> TvPill(if (state.filter.sort == SortOrder.OLDEST) "▶  Eerste aflevering" else "▶  Nieuwste aflevering", { onPlay(first) }, selected = true) }
+                Row(Modifier.padding(top = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    state.items.firstOrNull()?.takeIf { state.filter.query.isBlank() }?.let { first -> TvPill(if (state.filter.sort == SortOrder.OLDEST) "▶  Eerste aflevering" else "▶  Nieuwste aflevering", { onPlay(first) }, selected = true) }
                     if (data != null) TvPill(if (following) "✓  Volgend" else "+  Volgen", { library.toggleFollow(data.toItem(), state.total) })
                     TvPill(if (state.filter.sort == SortOrder.OLDEST) "Oudste eerst" else "Nieuwste eerst", viewModel::toggleSort)
                 }
+                // Zoeken binnen de afleveringen van deze serie.
+                var episodeQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+                TvInputField(
+                    episodeQuery, { episodeQuery = it }, "Zoek in de afleveringen", Modifier.padding(top = 4.dp, bottom = 4.dp).width(560.dp),
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                    leading = androidx.compose.material.icons.Icons.Rounded.Search,
+                    onSubmit = { viewModel.update { f -> f.copy(query = episodeQuery.trim()) } }
+                )
             }
         })
     }

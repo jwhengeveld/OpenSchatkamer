@@ -3,6 +3,7 @@
 package nl.openschatkamer.tv
 
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -198,6 +199,7 @@ class MainActivity : ComponentActivity() {
         val link by pendingLink.collectAsState()
         LaunchedEffect(link) {
             val uri = link ?: return@LaunchedEffect
+            androidx.compose.runtime.snapshotFlow { nav.currentBackStackEntry }.first { it != null }
             pendingLink.value = null
             if (uri.host == "home") { nav.navigate(Dest.HOME) { popUpTo(Dest.HOME) { inclusive = true } }; return@LaunchedEffect }
             val id = uri.pathSegments.firstOrNull() ?: return@LaunchedEffect
@@ -213,6 +215,8 @@ class MainActivity : ComponentActivity() {
         val searchRequest by pendingSearch.collectAsState()
         LaunchedEffect(searchRequest) {
             if (searchRequest == null) return@LaunchedEffect
+            // Bij een koude start is de navigatie er nog niet: eerst daarop wachten.
+            androidx.compose.runtime.snapshotFlow { nav.currentBackStackEntry }.first { it != null }
             playing = null
             nav.navigate(Dest.SEARCH) { popUpTo(Dest.HOME); launchSingleTop = true }
         }

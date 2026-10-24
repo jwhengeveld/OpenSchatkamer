@@ -222,6 +222,29 @@ data class SearchFacets(
     val programs: List<FacetItem> = emptyList()
 )
 
+/** Wat de site als aanvulling op een (deel van een) zoekterm geeft. */
+data class SearchFlyout(
+    val series: List<SchatkamerItem> = emptyList(),
+    val programs: List<SchatkamerItem> = emptyList(),
+    val people: List<String> = emptyList(),
+    /** Alle titels en namen, om een half woord aan te vullen. */
+    val titles: List<String> = emptyList()
+) {
+    /**
+     * Het woord waarmee [fragment] waarschijnlijk bedoeld is: het vaakst voorkomende
+     * woord in de titels dat ermee begint ("huisj" → "huisje"). Null als er geen is.
+     */
+    fun complete(fragment: String): String? {
+        val f = fragment.lowercase().trim()
+        if (f.length < 2) return null
+        return titles.flatMap { it.lowercase().split(Regex("[^\\p{L}\\p{N}]+")) }
+            .filter { it.length > f.length && it.startsWith(f) }
+            .groupingBy { it }.eachCount()
+            .entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.length })
+            .firstOrNull()?.key
+    }
+}
+
 data class SearchResult(
     val query: String,
     val total: Int,

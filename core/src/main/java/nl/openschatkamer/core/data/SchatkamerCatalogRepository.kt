@@ -133,8 +133,22 @@ class SchatkamerCatalogRepository(context: Context) {
      * Suggesties tijdens het typen: series en personen die bij de zoekterm passen,
      * uit de facetten van één klein zoekverzoek.
      */
+    /** Aanvullen zoals op de site: werkt ook op een deel van een woord. */
+    suspend fun flyout(query: String): SearchFlyout? = withContext(Dispatchers.IO) {
+        if (query.trim().length < 2) return@withContext null
+        runCatching {
+            SchatkamerParser.parseFlyout(http.getJson(http.url("/api/media/bff/search/flyout", listOf("query" to query.trim()))))
+        }.getOrNull()
+    }
+
     suspend fun suggestions(prefix: String): List<String> {
         if (prefix.trim().length < 2) return emptyList()
+        // Eerst het aanvulvenster van de site (vindt ook halve woorden).
+        flyout(prefix)?.let { f ->
+            val list = (f.series.map { it.title }.take(5) + f.people.take(3))
+                .distinctBy { it.lowercase() }.filter { it.isNotBlank() }
+            if (list.isNotEmpty()) return list
+        }
         val result = search(SearchFilter(query = prefix), limit = 1).getOrNull() ?: return emptyList()
         val series = result.facets.programs.map { SchatkamerText.prettyTitle(it.label) }
         val people = result.facets.people.map { it.label }

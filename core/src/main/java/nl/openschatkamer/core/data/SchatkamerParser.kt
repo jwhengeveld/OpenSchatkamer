@@ -339,6 +339,29 @@ object SchatkamerParser {
         )
     }
 
+    /**
+     * Het aanvulvenster van de site (`/search/flyout`): zoekt ook op een deel van
+     * een woord ("huisj" vindt "Huisje, Boompje, Beestje").
+     */
+    fun parseFlyout(json: String): SearchFlyout {
+        val data = JSONObject(json).let { it.optJSONObject("data") ?: it }
+        val media = data.optJSONArray("media").objects()
+        val series = media.filter { it.optString("type") == "series" }.mapNotNull { o ->
+            val id = o.firstString("externalId", "id")
+            val title = SchatkamerText.prettyTitle(o.optString("title"))
+            if (id.isBlank() || title.isBlank()) null
+            else SchatkamerItem(
+                id = id, title = title, kind = ItemKind.SERIES, seriesId = id, seriesTitle = title,
+                imageUrl = o.imageUrl(), broadcaster = SchatkamerText.clean(o.optString("broadcaster")),
+                mediaType = SchatkamerText.clean(o.optString("mediaType")).ifBlank { "video" }
+            )
+        }
+        val programs = media.filter { it.optString("type") == "program" }.mapNotNull(::parseBffProgram)
+        val people = data.optJSONArray("persons").objects().map { SchatkamerText.clean(it.optString("title")) }.filter { it.isNotBlank() }
+        val words = media.map { SchatkamerText.clean(it.optString("title")) } + people
+        return SearchFlyout(series, programs, people, words)
+    }
+
     internal fun parseBffProgram(obj: JSONObject): SchatkamerItem? {
         val id = obj.firstString("externalId", "id", "programId")
         if (id.isBlank()) return null

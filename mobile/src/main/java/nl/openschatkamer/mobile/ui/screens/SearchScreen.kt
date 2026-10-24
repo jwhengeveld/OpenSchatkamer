@@ -254,7 +254,8 @@ fun androidx.compose.foundation.lazy.LazyListScope.resultsContent(
             FilterBar(state.filter, state.facets.genres, onFilter, broadcasterFacets = state.facets.broadcasters, lockBroadcaster = lockBroadcaster)
             if (state.loaded && state.error == null) {
                 Text(
-                    countLabel(state.total, if (state.total == 1) "uitzending" else "uitzendingen"),
+                    countLabel(state.total, if (state.total == 1) "uitzending" else "uitzendingen") +
+                        (state.completedQuery?.let { " voor \u201c$it\u201d" } ?: ""),
                     style = MaterialTheme.typography.bodySmall, color = BrandColors.TextMuted,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )

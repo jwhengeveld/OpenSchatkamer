@@ -23,14 +23,17 @@ data class BrowseSpec(
     val archiveBroadcasters: List<String> = emptyList(),
     val seriesId: String? = null,
     /** "video", "audio" of null. */
-    val material: String? = null
+    val material: String? = null,
+    /** Extra genres en onderwerpen (binnen een soort: of-of). */
+    val genres: List<String> = emptyList(),
+    val subjects: List<String> = emptyList()
 ) {
     fun toFilter(catalog: SchatkamerCatalogRepository): SearchFilter = SearchFilter(
         broadcasters = broadcaster?.let { catalog.broadcasterByName(it).archiveNames.toSet() }.orEmpty() + archiveBroadcasters,
         seriesId = seriesId,
         material = material,
-        genres = setOfNotNull(genre),
-        subjects = setOfNotNull(subject),
+        genres = setOfNotNull(genre) + genres,
+        subjects = setOfNotNull(subject) + subjects,
         people = setOfNotNull(person),
         decade = decade,
         dateFrom = dateFrom,
@@ -48,8 +51,8 @@ data class BrowseSpec(
             person != null -> "PERSOON"
             seriesId != null -> "SERIE"
             broadcaster != null || archiveBroadcasters.isNotEmpty() -> "OMROEP"
-            genre != null -> "GENRE"
-            subject != null -> "ONDERWERP"
+            genre != null || genres.isNotEmpty() -> "GENRE"
+            subject != null || subjects.isNotEmpty() -> "ONDERWERP"
             dateFrom != null -> "TERUG IN DE TIJD"
             decade != null -> "PERIODE"
             else -> "BLADEREN"
@@ -67,6 +70,8 @@ data class BrowseSpec(
         if (archiveBroadcasters.isNotEmpty()) appendQueryParameter("ab", archiveBroadcasters.joinToString("|"))
         seriesId?.let { appendQueryParameter("sid", it) }
         material?.let { appendQueryParameter("m", it) }
+        if (genres.isNotEmpty()) appendQueryParameter("gs", genres.joinToString("|"))
+        if (subjects.isNotEmpty()) appendQueryParameter("ss", subjects.joinToString("|"))
     }.build().encodedQuery.orEmpty()
 
     companion object {
@@ -83,7 +88,9 @@ data class BrowseSpec(
                 dateTo = uri.getQueryParameter("dt"),
                 archiveBroadcasters = uri.getQueryParameter("ab")?.split('|')?.filter { it.isNotBlank() }.orEmpty(),
                 seriesId = uri.getQueryParameter("sid"),
-                material = uri.getQueryParameter("m")
+                material = uri.getQueryParameter("m"),
+                genres = uri.getQueryParameter("gs")?.split('|')?.filter { it.isNotBlank() }.orEmpty(),
+                subjects = uri.getQueryParameter("ss")?.split('|')?.filter { it.isNotBlank() }.orEmpty()
             )
         }
     }

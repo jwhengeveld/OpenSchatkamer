@@ -38,9 +38,10 @@ class KidsViewModel(private val catalog: SchatkamerCatalogRepository) : ViewMode
         viewModelScope.launch {
             val rows = coroutineScope {
                 val classics = async { classics() }
-                val schoolTv = async { schoolTv() }
-                val searches = SEARCH_ROWS.map { (title, spec) -> async { weeklyRow(title, spec) } }
-                listOfNotNull(classics.await(), schoolTv.await()) + searches.awaitAll().filterNotNull()
+                val sections = SECTIONS.map { (title, spec, episodes) ->
+                    async { if (episodes) episodeRow(title, spec) else seriesRow(title, spec) }
+                }
+                listOfNotNull(classics.await()) + sections.awaitAll().filterNotNull()
             }
             _rows.value = if (rows.isEmpty()) Load.Failed("De kinderprogramma's konden niet geladen worden.") else Load.Ready(rows)
         }
@@ -56,10 +57,10 @@ class KidsViewModel(private val catalog: SchatkamerCatalogRepository) : ViewMode
     }
 
     /**
-     * Een rij uit de zoekdienst met elke week een andere greep: een ander stuk
-     * van de resultaten, in een andere volgorde. Lukt dat stuk niet, dan het begin.
+     * Een rij uitzendingen (voor het Jeugdjournaal en Het Klokhuis, waar je juist
+     * losse afleveringen kiest), elke week een ander stuk en in een andere volgorde.
      */
-    private suspend fun weeklyRow(title: String, spec: BrowseSpec): Row? {
+    private suspend fun episodeRow(title: String, spec: BrowseSpec): Row? {
         val filter = spec.toFilter(catalog)
         val offset = WeeklyPick.index(WEEKLY_WINDOWS, title) * WINDOW
         val items = (catalog.search(filter, offset = offset, limit = WINDOW).getOrNull()?.items.orEmpty().takeIf { it.size >= 6 }
@@ -71,32 +72,37 @@ class KidsViewModel(private val catalog: SchatkamerCatalogRepository) : ViewMode
     }
 
     /**
-     * Schooltv-series: alles van de omroepen NOT en TELEAC, gegroepeerd per serie.
-     * Elke week uit een ander deel van het archief, zodat er steeds andere series
-     * uitgelicht worden; nieuwe series komen vanzelf mee.
+     * Een rij series: de uitzendingen die bij [spec] horen, gegroepeerd per serie.
+     * Elke week uit een ander deel van de resultaten en in een andere volgorde,
+     * zodat er steeds andere series uitgelicht worden; nieuwe komen vanzelf mee.
      */
-    private suspend fun schoolTv(): Row? = coroutineScope {
-        val filter = SCHOOLTV.toFilter(catalog)
+    private suspend fun seriesRow(title: String, spec: BrowseSpec): Row? = coroutineScope {
+        val filter = spec.toFilter(catalog)
         suspend fun seriesFrom(start: Int) = listOf(0, 50, 100)
             .map { step -> async { catalog.search(filter, offset = start + step, limit = 50).getOrNull()?.items.orEmpty() } }
             .awaitAll().flatten()
-            .filter { !it.seriesId.isNullOrBlank() && !it.seriesTitle.isNullOrBlank() }
+            .filter { !it.seriesId.isNullOrBlank() && !it.seriesTitle.isNullOrBlank() && it.seriesId !in EXCLUDED_SERIES }
+            .filter { s -> EXCLUDED_TITLES.none { s.seriesTitle!!.uppercase().startsWith(it) } }
             .groupBy { it.seriesId!! }
             .entries.toList()
-        val start = WeeklyPick.index(8, "schooltv") * 150
-        val series = seriesFrom(start).takeIf { it.size >= 6 } ?: seriesFrom(0)
-        WeeklyPick.shuffled(series, "schooltv")
+        val start = WeeklyPick.index(6, title) * 150
+        val series = (if (start > 0) seriesFrom(start).takeIf { it.size >= 6 } else null) ?: seriesFrom(0)
+        WeeklyPick.shuffled(series, title)
             .take(24)
             .map { (id, episodes) ->
                 val first = episodes.firstOrNull { it.imageUrl.isNotBlank() } ?: episodes.first()
                 SchatkamerItem(
-                    id = id, title = SchatkamerText.prettyTitle(first.seriesTitle), kind = ItemKind.SERIES,
+                    id = id, title = seriesName(first.seriesTitle.orEmpty()), kind = ItemKind.SERIES,
                     seriesId = id, imageUrl = first.imageUrl, broadcaster = first.broadcaster
                 )
             }
             .takeIf { it.size >= 3 }
-            ?.let { Row(SchatkamerRow("kids-schooltv", "Schooltv", it, RowLayout.PORTRAIT), SCHOOLTV) }
+            ?.let { Row(SchatkamerRow("kids-$title", title, it, RowLayout.PORTRAIT), spec) }
     }
+
+    /** "PAULUS DE BOSKABOUTER (Jean Dulieu)" → "Paulus de Boskabouter". */
+    private fun seriesName(raw: String): String =
+        SchatkamerText.prettyTitle(raw.replace(Regex("""\s*\([^)]*\)\s*$"""), "").trim())
 
     internal companion object {
         /**
@@ -131,12 +137,34 @@ class KidsViewModel(private val catalog: SchatkamerCatalogRepository) : ViewMode
         /** Schooltv en Teleac staan in het archief onder deze omroepnamen. */
         val SCHOOLTV = BrowseSpec("Schooltv en Teleac", archiveBroadcasters = listOf("NOT", "TELEAC", "TELEAC/NOT"), material = "video")
 
-        /** Rijen uit de zoekdienst; "Kijk meer" opent precies dezelfde zoekopdracht. */
-        val SEARCH_ROWS = listOf(
-            "Poppenspel" to BrowseSpec("Poppenspel", genre = "poppenspel", material = "video"),
-            "Series en drama voor de jeugd" to BrowseSpec("Drama voor de jeugd", genre = "televisiedrama", subject = "jeugd", material = "video"),
-            "Jeugdjournaal" to BrowseSpec("Jeugdjournaal", seriesId = JEUGDJOURNAAL),
-            "Het Klokhuis" to BrowseSpec("Het Klokhuis", seriesId = KLOKHUIS)
+        private val KIDS = listOf("kinderen", "jeugd")
+
+        private fun kids(title: String, vararg genres: String) =
+            BrowseSpec(title, subjects = KIDS, genres = genres.toList(), material = "video")
+
+        /**
+         * De secties van Kids, op volgorde. Series, behalve het Jeugdjournaal en
+         * Het Klokhuis: daar kies je juist een losse aflevering.
+         * "Kijk meer" opent precies dezelfde zoekopdracht.
+         */
+        val SECTIONS: List<Triple<String, BrowseSpec, Boolean>> = listOf(
+            Triple("Schooltv", SCHOOLTV, false),
+            Triple("Poppenspel", BrowseSpec("Poppenspel", genre = "poppenspel", material = "video"), false),
+            Triple("Jeugdseries", BrowseSpec("Jeugdseries", genre = "televisiedrama", subject = "jeugd", material = "video"), false),
+            Triple("Lachen en gekkigheid", kids("Lachen en gekkigheid", "amusement"), false),
+            Triple("Quiz en spel", kids("Quiz en spel", "quiz", "spelprogramma"), false),
+            Triple("Muziek en zingen", kids("Muziek en zingen", "muziekprogramma", "muziekuitzending"), false),
+            Triple("Dieren en natuur", kids("Dieren en natuur", "natuur- en milieuprogramma"), false),
+            Triple("Leren en ontdekken", kids("Leren en ontdekken", "educatie", "populairwetenschappelijke informatie"), false),
+            Triple("Jeugdjournaal", BrowseSpec("Jeugdjournaal", seriesId = JEUGDJOURNAAL), true),
+            Triple("Het Klokhuis", BrowseSpec("Het Klokhuis", seriesId = KLOKHUIS), true)
+        )
+
+        /** Series die wel bij de zoekopdracht passen, maar niet voor kinderen zijn. */
+        val EXCLUDED_SERIES = setOf(JEUGDJOURNAAL, KLOKHUIS)
+        val EXCLUDED_TITLES = listOf(
+            "THEATER VAN HET SENTIMENT", "DE AVONDEN", "MEER OP ZONDAG", "NOORDERLICHT", "VROEGE VOGELS",
+            "IP RECLAME", "POLYGOON", "JOURNAAL", "NOS JOURNAAL", "OPIUM", "NOVA", "NETWERK"
         )
 
     }

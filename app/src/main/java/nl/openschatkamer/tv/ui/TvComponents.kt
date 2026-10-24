@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.ui.focus.onFocusChanged
@@ -172,15 +173,17 @@ fun Modifier.tvFocusable(onClick: () -> Unit, shape: Shape = TvShape, scaleTo: F
             onDispose { if (registry.requesters[key] === requester) registry.requesters.remove(key) }
         }
     }
+    // Eerst focusbaar, dan pas vergroten: zo blijft het vlak van de focus even groot
+    // en schuift de rij niet mee met het groeien van de kaart.
     return this
         .focusRequester(requester)
-        .scale(scale)
-        .border(if (focused) 3.dp else 0.dp, if (focused) BrandColors.Amber else Color.Transparent, shape)
-        .clip(shape)
         .combinedClickable(
             interactionSource = interaction, indication = null, onClick = onClick,
             onLongClick = item?.let { { actions(it) } }
         )
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .border(3.dp, if (focused) BrandColors.Amber else Color.Transparent, shape)
+        .clip(shape)
 }
 
 /**

@@ -91,8 +91,13 @@ data class QueryState(
     val endReached: Boolean = false,
     val error: String? = null,
     /** Pas waar na het eerste antwoord: zo tonen we geen "niets gevonden" tijdens het laden. */
-    val loaded: Boolean = false
-)
+    val loaded: Boolean = false,
+    /** Aangevulde zoekterm als de getypte niets gaf ("huisj" → "huisje"). */
+    val completedQuery: String? = null
+) {
+    /** Het filter waarmee echt gezocht wordt (met de aangevulde term). */
+    val effectiveFilter: SearchFilter get() = completedQuery?.let { filter.copy(query = it) } ?: filter
+}
 
 /**
  * Eén zoekopdracht met oneindig scrollen. Gebruikt voor zoeken, omroepen,
@@ -124,14 +129,17 @@ open class PagedQueryViewModel(
         job = viewModelScope.launch {
             catalog.search(filter, offset = 0)
                 .onSuccess { r ->
-                    _state.value = QueryState(
+                    _state.value = enrich(QueryState(
                         filter = filter, items = r.items, series = r.series, total = r.total, facets = r.facets,
                         endReached = !r.hasMore, loaded = true
-                    )
+                    ))
                 }
                 .onFailure { e -> _state.value = QueryState(filter = filter, error = friendlyError(e), loaded = true) }
         }
     }
+
+    /** Voor subklassen: het antwoord aanvullen (zoeken doet dat met deeltreffers). */
+    protected open suspend fun enrich(state: QueryState): QueryState = state
 
     protected open fun isRunnable(filter: SearchFilter): Boolean = true
 
@@ -144,7 +152,7 @@ open class PagedQueryViewModel(
         if (s.isLoading || s.isLoadingMore || s.endReached || s.error != null || !s.loaded) return
         _state.update { it.copy(isLoadingMore = true) }
         job = viewModelScope.launch {
-            catalog.search(s.filter, offset = s.items.size)
+            catalog.search(s.effectiveFilter, offset = s.items.size)
                 .onSuccess { r ->
                     _state.update {
                         val merged = (it.items + r.items).distinctBy { item -> item.id }
@@ -190,6 +198,30 @@ class SearchViewModel(catalog: SchatkamerCatalogRepository, context: Context) : 
     }
 
     override fun isRunnable(filter: SearchFilter): Boolean = filter.query.isNotBlank()
+
+    /**
+     * De zoekdienst zoekt op hele woorden. Het aanvulvenster van de site vindt ook
+     * delen ("huisj"): die series komen bovenaan, en geeft de getypte term niets,
+     * dan zoeken we op het aangevulde woord.
+     */
+    override suspend fun enrich(state: QueryState): QueryState {
+        val query = state.filter.query
+        if (query.length < 2 || state.filter.seriesId != null) return state
+        val flyout = catalog.flyout(query) ?: return state
+        var result = state
+        if (state.total == 0) {
+            val words = query.trim().split(Regex("\\s+"))
+            val completed = flyout.complete(words.last())
+            if (completed != null) {
+                val q = (words.dropLast(1) + completed).joinToString(" ")
+                catalog.search(state.filter.copy(query = q), offset = 0).getOrNull()?.takeIf { it.total > 0 }?.let { r ->
+                    result = state.copy(items = r.items, series = r.series, total = r.total, facets = r.facets, endReached = !r.hasMore, completedQuery = q)
+                }
+            }
+        }
+        val series = (flyout.series + result.series).distinctBy { it.seriesId ?: it.id }
+        return result.copy(series = series)
+    }
 
     fun onTextChange(value: String) {
         _text.value = value
