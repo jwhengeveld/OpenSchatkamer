@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <dimen name="tv_safe_margin_horizontal">48dp</dimen>
-    <dimen name="tv_safe_margin_vertical">27dp</dimen>
-    <dimen name="tv_control_button">64dp</dimen>
-    <dimen name="tv_control_button_large">80dp</dimen>
-    <dimen name="tv_control_padding">14dp</dimen>
-    <dimen name="tv_back_button">52dp</dimen>
-</resources>

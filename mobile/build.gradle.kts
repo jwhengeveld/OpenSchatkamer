@@ -14,23 +14,16 @@ val keystoreProperties = Properties().apply {
 }
 val hasReleaseSigning = keystoreProperties.getProperty("storeFile") != null
 
-val castReceiverId: String =
-    (project.findProperty("schatkamer.castReceiverId") as String?)?.takeIf { it.isNotBlank() }
-        ?: "377B8439" // Officiële Schatkamer Chromecast Receiver (Beeld & Geluid THEOplayer receiver met Widevine DRM)
-
 android {
-    namespace = "nl.beeldengeluid.schatkamer.mobile"
+    namespace = "nl.openschatkamer.mobile"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "nl.beeldengeluid.schatkamer.mobile"
-        resValue("string", "app_name", "De Schatkamer")
-        minSdk = 24
+        applicationId = "nl.openschatkamer.mobile"
+                minSdk = 24
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.0.14"
-
-        buildConfigField("String", "CAST_RECEIVER_ID", "\"$castReceiverId\"")
+        versionCode = 20
+        versionName = "2.0.0"
     }
 
     signingConfigs {

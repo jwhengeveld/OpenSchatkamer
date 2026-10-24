@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "nl.beeldengeluid.schatkamer.brand"
+    namespace = "nl.openschatkamer.brand"
     compileSdk = 36
 
     defaultConfig {

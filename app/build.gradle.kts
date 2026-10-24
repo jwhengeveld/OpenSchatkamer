@@ -15,16 +15,15 @@ val keystoreProperties = Properties().apply {
 val hasReleaseSigning = keystoreProperties.getProperty("storeFile") != null
 
 android {
-    namespace = "nl.beeldengeluid.schatkamer.tv"
+    namespace = "nl.openschatkamer.tv"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "nl.beeldengeluid.schatkamer.tv"
-        resValue("string", "app_name", "De Schatkamer")
+        applicationId = "nl.openschatkamer.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.0.14"
+        versionCode = 20
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

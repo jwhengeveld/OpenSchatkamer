@@ -17,3 +17,5 @@ build-play/
 release/
 dist/
 *.zip
+*.crx
+browser-extension/keys/

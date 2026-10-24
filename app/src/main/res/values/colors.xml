@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="schatkamer_bg">#111218</color>
-    <color name="schatkamer_cyan">#05C8F0</color>
-    <color name="schatkamer_magenta">#FF00BC</color>
-    <color name="control_idle">#33FFFFFF</color>
-    <color name="text_secondary">#A0A5BC</color>
-</resources>

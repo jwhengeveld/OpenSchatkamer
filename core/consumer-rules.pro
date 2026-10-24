@@ -10,7 +10,7 @@
 -dontwarn org.openjsse.**
 
 # Core datamodellen
--keepnames class nl.beeldengeluid.schatkamer.core.data.** { *; }
+-keepnames class nl.openschatkamer.core.data.** { *; }
 
 # org.json platform
 -dontwarn org.json.**

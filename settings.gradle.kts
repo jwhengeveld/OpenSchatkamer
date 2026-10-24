@@ -19,7 +19,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Schatkamer"
+rootProject.name = "OpenSchatkamer"
 include(":app")
 include(":core")
 include(":brand")
