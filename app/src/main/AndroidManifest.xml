@@ -5,6 +5,10 @@
     <!-- Eigen items in "Verder kijken" op het tv-startscherm. -->
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Spraakzoeken met de microfoon van de afstandsbediening (optioneel). -->
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
 
     <!-- Android TV Leanback ondersteuning (required="false" zodat app ook op telefoons kan draaien) -->
     <uses-feature
@@ -46,7 +50,21 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="openschatkamer" />
             </intent-filter>
+            <!-- Zoeken vanuit Google TV, de Assistent of de zoekknop op de afstandsbediening. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.searchable"
+                android:resource="@xml/searchable" />
         </activity>
+
+        <provider
+            android:name=".SearchProvider"
+            android:authorities="nl.openschatkamer.tv.search"
+            android:exported="true"
+            android:readPermission="android.permission.GLOBAL_SEARCH" />
     </application>
 
 </manifest>

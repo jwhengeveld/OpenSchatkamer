@@ -136,9 +136,22 @@ class MainActivity : ComponentActivity() {
         handleLink(intent)
     }
 
+    /** Zoekterm van Google TV, de Assistent of de zoekknop op de afstandsbediening. */
+    private val pendingSearch = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
     private fun handleLink(intent: android.content.Intent?) {
+        if (intent?.action == android.content.Intent.ACTION_SEARCH) {
+            pendingSearch.value = intent.getStringExtra(android.app.SearchManager.QUERY).orEmpty()
+            return
+        }
         val data = intent?.data ?: return
         if (data.scheme == "openschatkamer") pendingLink.value = data
+    }
+
+    // De zoekknop op de afstandsbediening: ons eigen zoekscherm in plaats van het systeemvenster.
+    override fun onSearchRequested(): Boolean {
+        pendingSearch.value = ""
+        return true
     }
 
     @Composable
@@ -169,6 +182,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(link) {
             val uri = link ?: return@LaunchedEffect
             pendingLink.value = null
+            if (uri.host == "home") { nav.navigate(Dest.HOME) { popUpTo(Dest.HOME) { inclusive = true } }; return@LaunchedEffect }
             val id = uri.pathSegments.firstOrNull() ?: return@LaunchedEffect
             when (uri.host) {
                 "program" -> if (uri.getQueryParameter("play") == "1") {
@@ -178,6 +192,19 @@ class MainActivity : ComponentActivity() {
                 } else nav.navigate("program/$id")
                 "series" -> nav.navigate("series/$id")
             }
+        }
+        val searchRequest by pendingSearch.collectAsState()
+        LaunchedEffect(searchRequest) {
+            if (searchRequest == null) return@LaunchedEffect
+            playing = null
+            nav.navigate(Dest.SEARCH) { popUpTo(Dest.HOME); launchSingleTop = true }
+        }
+        // Eigen rij op het tv-startscherm met wat er nu uitgelicht is.
+        LaunchedEffect(homeState, timeTravel) {
+            val ready = (homeState as? Load.Ready)?.data ?: return@LaunchedEffect
+            val featured = timeTravel.flatMap { it.items.take(6) } +
+                ready.browseRows.flatMap { r -> r.items.filter { it.kind == ItemKind.PROGRAM || it.kind == ItemKind.SERIES }.take(4) }
+            PreviewChannel.publish(applicationContext, featured)
         }
         val browse: (BrowseSpec) -> Unit = { nav.navigate(browseRoute(it)) }
 
@@ -197,15 +224,20 @@ class MainActivity : ComponentActivity() {
         val contentFocus = remember { FocusRequester() }
         var contentHasFocus by remember { mutableStateOf(false) }
         var userMoved by remember { mutableStateOf(false) }
+        var sideNavHasFocus by remember { mutableStateOf(false) }
         val backStack by nav.currentBackStackEntryAsState()
         LaunchedEffect(backStack?.id, playing == null) {
             if (playing != null) return@LaunchedEffect
             userMoved = false
             kotlinx.coroutines.delay(600)
+            // Altijd minstens één keer: als het scherm met de focus net is weggehaald,
+            // klopt contentHasFocus soms nog niet.
+            contentFocus.requestFocusSafely()
             val until = System.currentTimeMillis() + 20_000
-            while (!contentHasFocus && !userMoved && System.currentTimeMillis() < until) {
-                contentFocus.requestFocusSafely()
+            while (!userMoved && System.currentTimeMillis() < until) {
                 kotlinx.coroutines.delay(250)
+                if (contentHasFocus && !sideNavHasFocus) break
+                contentFocus.requestFocusSafely()
             }
         }
 
@@ -234,9 +266,12 @@ class MainActivity : ComponentActivity() {
                         .focusGroup()
                 ) {
                     NavHost(nav, startDestination = Dest.HOME) {
-                        composable(Dest.HOME) { TvHomeScreen(homeViewModel, continueWatching, timeTravel, open, { play(it, false) }, browse) }
+                        composable(Dest.HOME) { TvHomeScreen(homeViewModel, continueWatching, timeTravel, open, { play(it, false) }, browse, app.video, previewEnabled = playing == null && actionItem == null) }
                         composable(Dest.SEARCH) {
                             val vm: SearchViewModel = viewModel { SearchViewModel(app.catalog, applicationContext) }
+                            LaunchedEffect(searchRequest) {
+                                searchRequest?.let { q -> if (q.isNotBlank()) vm.submit(q); pendingSearch.value = null }
+                            }
                             TvSearchScreen(vm, open)
                         }
                         composable(Dest.DISCOVER) {
@@ -279,7 +314,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                SideNav(nav)
+                Box(Modifier.onFocusChanged { sideNavHasFocus = it.hasFocus }) { SideNav(nav) }
             }
 
             playing?.let { (item, fromStart) ->

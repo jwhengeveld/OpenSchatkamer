@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -285,4 +286,42 @@ private fun formatTime(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
     val h = total / 3600; val m = (total % 3600) / 60; val s = total % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+}
+
+/**
+ * Stil voorbeeldfragment achter de kop van Start, zoals op Google TV: blijf je
+ * even op een uitzending staan, dan speelt hij zonder geluid op de achtergrond.
+ * Pas na een korte pauze, zodat snel door de rijen bladeren niets ophaalt.
+ */
+@OptIn(UnstableApi::class)
+@Composable
+fun TvBackdropPreview(item: SchatkamerItem, video: SchatkamerVideoRepository, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    val context = LocalContext.current
+    var visible by remember(item.id) { mutableStateOf(false) }
+    val player = remember(item.id) {
+        SchatkamerPlayback.buildPlayer(context, handleAudioFocus = false).apply {
+            volume = 0f
+            repeatMode = Player.REPEAT_MODE_ONE
+        }
+    }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() { visible = true }
+            override fun onPlayerError(error: PlaybackException) { visible = false }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener); player.release() }
+    }
+    LaunchedEffect(item.id) {
+        delay(3_500)
+        video.playable(item.id).onSuccess { m -> SchatkamerPlayback.play(context, player, m) }
+    }
+    val alpha by androidx.compose.animation.core.animateFloatAsState(if (visible) 1f else 0f, androidx.compose.animation.core.tween(800), label = "voorbeeld")
+    // Het beeldvlak staat er altijd (anders komt er nooit een eerste beeld); het vloeit in zodra er beeld is.
+    AndroidView(
+        factory = { ctx ->
+            (android.view.LayoutInflater.from(ctx).inflate(nl.openschatkamer.tv.R.layout.tv_preview_player, null) as PlayerView).apply { this.player = player }
+        },
+        modifier = modifier.graphicsLayer { this.alpha = alpha; clip = true }
+    )
 }

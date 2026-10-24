@@ -80,6 +80,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.material.icons.rounded.Mic
 
 private val SCREEN_PADDING = PaddingValues(start = 32.dp, end = 40.dp, top = 20.dp, bottom = 40.dp)
 
@@ -92,7 +93,9 @@ fun TvHomeScreen(
     timeTravel: List<TimeTravelViewModel.Row>,
     onOpen: (SchatkamerItem) -> Unit,
     onPlay: (SchatkamerItem) -> Unit,
-    onBrowse: (BrowseSpec) -> Unit
+    onBrowse: (BrowseSpec) -> Unit,
+    video: nl.openschatkamer.core.data.SchatkamerVideoRepository? = null,
+    previewEnabled: Boolean = true
 ) {
     val home by viewModel.home.collectAsState()
     // De kaart met focus kleurt de achtergrond, zoals op Google TV.
@@ -101,6 +104,10 @@ fun TvHomeScreen(
         androidx.compose.animation.Crossfade(focused?.imageUrl, label = "achtergrond", modifier = Modifier.fillMaxWidth().fillMaxHeight(0.62f).align(Alignment.TopEnd)) { url ->
             Box(Modifier.fillMaxSize()) {
                 TvArtwork(url, Modifier.fillMaxSize())
+                val f = focused
+                if (video != null && previewEnabled && f != null && f.imageUrl == url && f.kind == ItemKind.PROGRAM && !f.isAudio) {
+                    TvBackdropPreview(f, video, Modifier.fillMaxSize())
+                }
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to BrandColors.Ink, 0.55f to BrandColors.Ink.copy(alpha = 0.6f), 1f to Color.Transparent)))
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to BrandColors.Ink)))
             }
@@ -250,7 +257,10 @@ fun TvSearchScreen(viewModel: SearchViewModel, onOpen: (SchatkamerItem) -> Unit)
     TvResultsGrid(state, viewModel, onOpen, header = {
         Column {
             Text("Zoeken", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
-            TvSearchField(text, viewModel::onTextChange, onSearch = { viewModel.submit() }, modifier = Modifier.padding(horizontal = 8.dp).width(720.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TvSearchField(text, viewModel::onTextChange, onSearch = { viewModel.submit() }, modifier = Modifier.padding(horizontal = 8.dp).width(720.dp))
+                TvVoiceSearchButton { viewModel.submit(it) }
+            }
             val chips = suggestions.ifEmpty { if (text.isBlank()) history.ifEmpty { listOf("Polygoon", "Jiskefet", "Swiebertje", "Toppop", "Elfstedentocht") } else emptyList() }
             if (chips.isNotEmpty()) {
                 LazyRow(contentPadding = PaddingValues(8.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -259,6 +269,30 @@ fun TvSearchScreen(viewModel: SearchViewModel, onOpen: (SchatkamerItem) -> Unit)
             }
         }
     })
+}
+
+/** Spraakzoeken met de microfoon van de afstandsbediening; alleen zichtbaar als dat kan. */
+@Composable
+private fun TvVoiceSearchButton(onResult: (String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val intent = remember {
+        android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "nl-NL")
+            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Waar wil je naar kijken?")
+    }
+    val available = remember { intent.resolveActivity(context.packageManager) != null }
+    if (!available) return
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.takeIf { it.isNotBlank() }?.let(onResult)
+    }
+    androidx.compose.material3.Icon(
+        androidx.compose.material.icons.Icons.Rounded.Mic, "Spraakzoeken", tint = BrandColors.Amber,
+        modifier = Modifier
+            .tvFocusable({ runCatching { launcher.launch(intent) } }, androidx.compose.foundation.shape.CircleShape, 1.1f)
+            .background(BrandColors.SurfaceHigh)
+            .padding(14.dp)
+    )
 }
 
 // ---------------------------------------------------------------- bladeren

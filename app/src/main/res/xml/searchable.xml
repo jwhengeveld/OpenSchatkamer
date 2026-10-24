@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Zoeken vanuit Google TV / de Assistent: resultaten uit OpenSchatkamer. -->
+<searchable xmlns:android="http://schemas.android.com/apk/res/android"
+    android:label="@string/app_name"
+    android:hint="@string/search_hint"
+    android:searchSettingsDescription="@string/search_hint"
+    android:searchSuggestAuthority="nl.openschatkamer.tv.search"
+    android:searchSuggestIntentAction="android.intent.action.VIEW"
+    android:searchSuggestSelection=" ?"
+    android:searchSuggestThreshold="2"
+    android:includeInGlobalSearch="true"
+    android:voiceSearchMode="showVoiceSearchButton|launchRecognizer" />
