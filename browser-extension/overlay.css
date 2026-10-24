@@ -9,7 +9,7 @@
 
 .sk-dl-card {
   position: relative;
-  width: 320px;
+  width: 330px;
   background: #111218;
   color: #fff;
   border: 1px solid #2a2c38;
@@ -17,23 +17,48 @@
   padding: 14px 16px 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
+.sk-dl-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-right: 22px;
+}
 .sk-dl-title {
+  flex: 1;
+  min-width: 0;
   font-size: 14px;
   font-weight: 600;
   color: #fff;
-  margin-bottom: 6px;
-  padding-right: 22px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.sk-dl-badge {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 0, 188, 0.16);
+  color: #ff6fd3;
+  border: 1px solid rgba(255, 0, 188, 0.35);
+}
+.sk-dl-badge.audio {
+  background: rgba(5, 200, 240, 0.14);
+  color: #6fe3ff;
+  border-color: rgba(5, 200, 240, 0.4);
 }
 .sk-dl-status {
   font-size: 11.5px;
   color: #9aa0b4;
   line-height: 1.45;
   margin-bottom: 10px;
-  word-break: break-all;
+  word-break: break-word;
 }
+.sk-dl-status.sk-dl-error { color: #ff8fa3; }
 .sk-dl-bar {
   height: 3px;
   background: #23252f;
@@ -47,7 +72,7 @@
   background: linear-gradient(90deg, #ff00bc, #05c8f0);
   transition: width 0.25s ease;
 }
-.sk-dl-actions { display: flex; gap: 8px; }
+.sk-dl-actions { display: flex; gap: 8px; align-items: center; }
 .sk-dl-btn {
   flex: 1;
   font-size: 12px;
@@ -66,6 +91,12 @@
   background: transparent;
   border-color: #2f3240;
   color: #c8ccda;
+}
+.sk-dl-btn.danger {
+  flex: 0 0 auto;
+  background: transparent;
+  border-color: #ff00bc;
+  color: #ff6fd3;
 }
 .sk-dl-x {
   position: absolute;
