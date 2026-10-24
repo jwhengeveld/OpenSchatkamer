@@ -269,7 +269,7 @@ class MainActivity : ComponentActivity() {
                         .focusGroup()
                 ) {
                     NavHost(nav, startDestination = Dest.HOME) {
-                        composable(Dest.HOME) { TvHomeScreen(homeViewModel, continueWatching, timeTravel, open, { play(it, false) }, browse, app.video, previewEnabled = playing == null && actionItem == null) }
+                        composable(Dest.HOME) { TvHomeScreen(homeViewModel, continueWatching, timeTravel, open, { play(it, false) }, browse) }
                         composable(Dest.SEARCH) {
                             val vm: SearchViewModel = viewModel { SearchViewModel(app.catalog, applicationContext) }
                             LaunchedEffect(searchRequest) {

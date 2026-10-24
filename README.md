@@ -74,7 +74,7 @@ Elke bron heeft een terugvalroute; `SourceHealth` houdt bij welke route werkt (v
 - **TV**:
   - Op het startscherm van Google TV: "Verder kijken" (Watch Next) en een eigen kanaal met uitgelichte uitzendingen.
   - Zoeken vanuit Google TV en de Assistent (`SearchProvider`, alleen leesbaar voor het systeem), de zoekknop op de afstandsbediening en spraakzoeken.
-  - Layout zoals Google TV: een inklapbare zijbalk, een vaste kop met wat je geselecteerd hebt, en na even stilstaan een stil voorbeeldfragment op de achtergrond.
+  - Layout zoals Google TV: een inklapbare zijbalk, een vaste kop die rustig meeloopt met de focus, en rijen die onder een vast focuspunt doorschuiven (`TvPivotScroll`).
   - De hele interface staat op 80% schaal (`TV_UI_SCALE`), zodat er meer tegelijk in beeld past.
   - Focusherstel per rij, een actiemenu via lang OK en laadvlakken in plaats van een laadrondje.
 - **Tablet**: lijsten in 2 of 3 kolommen, en op de uitzendingspagina staan beeld en titel naast elkaar.

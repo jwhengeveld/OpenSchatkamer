@@ -138,10 +138,14 @@ val LocalTvItemStates = androidx.compose.runtime.compositionLocalOf<TvItemStates
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun Modifier.tvFocusable(onClick: () -> Unit, shape: Shape = TvShape, scaleTo: Float = 1.06f, item: SchatkamerItem? = null): Modifier {
+fun Modifier.tvFocusable(onClick: () -> Unit, shape: Shape = TvShape, scaleTo: Float = 1.05f, item: SchatkamerItem? = null): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) scaleTo else 1f, tween(160), label = "focus")
+    val scale by animateFloatAsState(
+        if (focused) scaleTo else 1f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.85f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+        label = "focus"
+    )
     val sink = LocalTvFocusSink.current
     val actions = LocalTvItemActions.current
     if (item != null) androidx.compose.runtime.LaunchedEffect(focused) { if (focused) sink(item) }
@@ -286,7 +290,7 @@ fun TvRowTitle(text: String, modifier: Modifier = Modifier) {
 fun TvCatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit) {
     Column {
         TvRowTitle(row.title.trim())
-        LazyRow(
+        TvPivotScroll(8.dp) { LazyRow(
             modifier = Modifier.focusRestorer(),
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp)
@@ -305,7 +309,7 @@ fun TvCatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit) {
                     else -> TvProgramCard(item, open)
                 }
             }
-        }
+        } }
     }
 }
 
@@ -488,4 +492,28 @@ fun TvSkeletonRows(rows: Int = 3) {
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) { repeat(6) { TvSkeletonCard(brush) } }
         }
     }
+}
+
+/**
+ * Scrollen zoals op Google TV: de kaart met focus blijft op een vaste plek
+ * ([lead] vanaf het begin) en de rij schuift er vloeiend onder door, in plaats
+ * van pas te verspringen als de focus de rand raakt.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun TvPivotScroll(lead: Dp, content: @Composable () -> Unit) {
+    val leadPx = with(androidx.compose.ui.platform.LocalDensity.current) { lead.toPx() }
+    val spec = remember(leadPx) {
+        object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+            @Suppress("OVERRIDE_DEPRECATION")
+            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
+                // Een veer kan een bijgestuurd doel volgen; een tween begint dan steeds opnieuw.
+                androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
+
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+                // Past het niet, dan gewoon het begin laten zien.
+                if (size >= containerSize - leadPx) offset else offset - leadPx
+        }
+    }
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides spec, content = content)
 }

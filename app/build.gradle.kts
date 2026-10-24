@@ -23,8 +23,8 @@ android {
         applicationId = "nl.openschatkamer.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 23
-        versionName = "2.2.0"
+        versionCode = 24
+        versionName = "2.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

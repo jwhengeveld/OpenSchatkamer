@@ -80,6 +80,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.rounded.Mic
 
 private val SCREEN_PADDING = PaddingValues(start = 32.dp, end = 40.dp, top = 20.dp, bottom = 40.dp)
@@ -93,32 +94,40 @@ fun TvHomeScreen(
     timeTravel: List<TimeTravelViewModel.Row>,
     onOpen: (SchatkamerItem) -> Unit,
     onPlay: (SchatkamerItem) -> Unit,
-    onBrowse: (BrowseSpec) -> Unit,
-    video: nl.openschatkamer.core.data.SchatkamerVideoRepository? = null,
-    previewEnabled: Boolean = true
+    onBrowse: (BrowseSpec) -> Unit
 ) {
     val home by viewModel.home.collectAsState()
-    // De kaart met focus kleurt de achtergrond, zoals op Google TV.
     var focused by remember { mutableStateOf<SchatkamerItem?>(null) }
+    // De kop volgt de focus pas als je even stilstaat, zodat snel door een rij
+    // bladeren rustig blijft in plaats van bij elke stap te flitsen.
+    var shown by remember { mutableStateOf<SchatkamerItem?>(null) }
+    LaunchedEffect(focused) {
+        if (shown != null) kotlinx.coroutines.delay(280)
+        shown = focused
+    }
     Box(Modifier.fillMaxSize()) {
-        androidx.compose.animation.Crossfade(focused?.imageUrl, label = "achtergrond", modifier = Modifier.fillMaxWidth().fillMaxHeight(0.62f).align(Alignment.TopEnd)) { url ->
-            Box(Modifier.fillMaxSize()) {
-                if (url != null) TvArtwork(url, Modifier.fillMaxSize())
-                val f = focused
-                if (video != null && previewEnabled && f != null && f.imageUrl == url && f.kind == ItemKind.PROGRAM && !f.isAudio) {
-                    TvBackdropPreview(f, video, Modifier.fillMaxSize())
-                }
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to BrandColors.Ink, 0.55f to BrandColors.Ink.copy(alpha = 0.6f), 1f to Color.Transparent)))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to BrandColors.Ink)))
-            }
-        }
+        // Vaste, rustige achtergrond: een zachte gloed rechtsboven in plaats van een wisselende foto.
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.radialGradient(
+                    listOf(BrandColors.Amber.copy(alpha = 0.10f), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, 0f), radius = 1400f
+                )
+            )
+        )
         CompositionLocalProvider(LocalTvFocusSink provides { focused = it }) {
           Column(Modifier.fillMaxSize()) {
             // Vaste kop, zoals op Google TV: wat je geselecteerd hebt staat bovenaan,
             // de rijen schuiven eronder door. Zo valt er nooit iets boven de rand.
             Column(Modifier.padding(start = 40.dp, top = 24.dp, end = 40.dp).fillMaxWidth().height(156.dp)) {
                 Wordmark(markSize = 26.dp, fontSize = 20.sp, platformSuffix = "TV")
-                focused?.let { f ->
+                androidx.compose.animation.AnimatedContent(
+                    shown, label = "kop",
+                    transitionSpec = {
+                        androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260, delayMillis = 60)) togetherWith
+                            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160))
+                    }
+                ) { f -> if (f != null) Column {
                     Text(
                         when (f.kind) { ItemKind.SERIES -> "SERIE"; ItemKind.STORY -> "VERHAAL"; ItemKind.PERSON -> "PERSOON"; else -> f.seriesTitle?.uppercase().orEmpty() },
                         style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber, maxLines = 1, modifier = Modifier.padding(top = 14.dp)
@@ -126,9 +135,10 @@ fun TvHomeScreen(
                     Text(f.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(760.dp))
                     val meta = f.tvMeta()
                     if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
-                }
+                } }
             }
-            LazyColumn(contentPadding = PaddingValues(start = 32.dp, end = 40.dp, bottom = 40.dp), modifier = Modifier.fillMaxSize().focusRestorer()) {
+            // De rij met focus komt steeds net onder de kop te staan, met de titel erboven in beeld.
+            TvPivotScroll(64.dp) { LazyColumn(contentPadding = PaddingValues(start = 32.dp, end = 40.dp, bottom = 40.dp), modifier = Modifier.fillMaxSize().focusRestorer()) {
                 when (val h = home) {
                     Load.Loading -> item { TvSkeletonRows() }
                     is Load.Failed -> item { TvMessage("Dat lukte even niet", h.message, "Opnieuw", viewModel::refresh) }
@@ -136,9 +146,9 @@ fun TvHomeScreen(
                         if (continueWatching.isNotEmpty()) {
                             item {
                                 TvRowTitle("Verder kijken")
-                                LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                TvPivotScroll(8.dp) { LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                                     items(continueWatching, key = { it.item.id }) { TvProgramCard(it.item, { onPlay(it.item) }, progress = it.fraction) }
-                                }
+                                } }
                             }
                         }
                         h.data.browseRows.forEachIndexed { index, row ->
@@ -146,17 +156,17 @@ fun TvHomeScreen(
                             if (index == 1) timeTravel.forEach { t ->
                                 item(key = "tt${t.yearsAgo}") {
                                     TvRowTitle(t.spec.title)
-                                    LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    TvPivotScroll(8.dp) { LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                                         items(t.items, key = { it.id }) { TvProgramCard(it, { onOpen(it) }) }
                                         item { TvPill("Meer…", { onBrowse(t.spec) }) }
-                                    }
+                                    } }
                                 }
                             }
                         }
                     }
                 }
                 item { Text(UNOFFICIAL_NOTICE, style = MaterialTheme.typography.bodySmall, color = BrandColors.TextMuted, modifier = Modifier.padding(8.dp, 40.dp)) }
-            }
+            } }
           }
         }
     }
