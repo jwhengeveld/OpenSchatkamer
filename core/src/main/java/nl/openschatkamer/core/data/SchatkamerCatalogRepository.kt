@@ -115,7 +115,8 @@ class SchatkamerCatalogRepository(context: Context) {
         forceRefresh: Boolean = false
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val url = http.url("/api/media/bff/search", filter.toQueryParams(offset, limit))
+            // De zoekdienst weigert meer dan 50 resultaten per verzoek.
+            val url = http.url("/api/media/bff/search", filter.toQueryParams(offset, limit.coerceIn(1, MAX_LIMIT)))
             SchatkamerParser.parseBffSearch(http.getJson(url, fresh = forceRefresh), filter.query, offset)
                 .also { SourceHealth.ok(SourceHealth.Source.SEARCH) }
         }.recoverCatching { error ->
@@ -202,6 +203,7 @@ class SchatkamerCatalogRepository(context: Context) {
 
     companion object {
         const val PAGE_SIZE = 30
+        const val MAX_LIMIT = 50
 
         private const val CMS = "https://schatkamer.beeldengeluid.nl/assets/cms"
 

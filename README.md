@@ -37,6 +37,7 @@ Een eigen sectie (tabblad op de telefoon, item in de zijbalk op tv) met kinderpr
 - **Klassiekers**: een vaste lijst kinderseries met archief-id en nette naam (Sesamstraat, Het Klokhuis, Swiebertje, Dappere Dodo, Paulus de boskabouter, …). De live contracttest controleert wekelijks dat ze nog bestaan.
 - **Schooltv**: alles van de omroepen NOT en TELEAC, gegroepeerd per serie (meeste uitzendingen eerst), zodat nieuwe series vanzelf meekomen.
 - Rijen uit de zoekdienst: poppenspel, drama voor de jeugd, het Jeugdjournaal en Het Klokhuis.
+- **Weekkeuze** (`WeeklyPick`): de eigen rijen van de app (Kids en de onderwerpen in Ontdekken) tonen elke week een andere selectie: een ander deel van de resultaten, in een andere volgorde. De hele week blijft het hetzelfde, op elk apparaat. Rijen die van de site zelf komen, wisselen daar al en blijven zoals ze zijn.
 - Elke rij heeft **Kijk meer**: het bladerscherm met precies die zoekopdracht (`BrowseSpec` kan ook meerdere archiefomroepen en een serie aan).
 
 ## Afspelen

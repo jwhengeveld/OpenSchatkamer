@@ -336,7 +336,9 @@ class DiscoverViewModel(private val catalog: SchatkamerCatalogRepository) : View
                 val facets = catalog.search(SearchFilter(), limit = 1).getOrNull()?.facets
                 val people = catalog.cachedHome()?.rows?.firstOrNull { it.kind == nl.openschatkamer.core.data.ItemKind.PERSON }?.items.orEmpty()
                 val genres = facets?.genres.orEmpty()
-                _data.value = DiscoverData(broadcasters = broadcasters, genres = genres, subjects = facets?.subjects.orEmpty(), people = people)
+                // Onderwerpen: elke week een andere greep uit de vijftig grootste.
+                val subjects = nl.openschatkamer.core.data.WeeklyPick.shuffled(facets?.subjects.orEmpty().take(50), "onderwerpen").take(24)
+                _data.value = DiscoverData(broadcasters = broadcasters, genres = genres, subjects = subjects, people = people)
                 if (genres.isNotEmpty()) break
                 delay(3_000L * attempt)
             }
