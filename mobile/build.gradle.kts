@@ -23,8 +23,8 @@ android {
         applicationId = "nl.openschatkamer.mobile"
                 minSdk = 24
         targetSdk = 36
-        versionCode = 25
-        versionName = "2.3.0"
+        versionCode = 26
+        versionName = "2.3.1"
     }
 
     signingConfigs {
