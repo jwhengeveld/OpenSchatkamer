@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -223,11 +224,11 @@ class MainActivity : ComponentActivity() {
                     false
                 }
         ) {
-            Row(Modifier.fillMaxSize()) {
-                SideNav(nav)
+            Box(Modifier.fillMaxSize()) {
                 Box(
                     Modifier
-                        .weight(1f)
+                        .fillMaxSize()
+                        .padding(start = SIDE_NAV_COLLAPSED)
                         .onFocusChanged { contentHasFocus = it.hasFocus }
                         .focusRequester(contentFocus)
                         .focusGroup()
@@ -278,6 +279,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                SideNav(nav)
             }
 
             playing?.let { (item, fromStart) ->
@@ -309,6 +311,14 @@ private val ENTRIES = listOf(
     NavEntry(Dest.MY_LIST, "Mijn lijst", Icons.Rounded.Bookmarks)
 )
 
+private val SIDE_NAV_COLLAPSED = 72.dp
+private val SIDE_NAV_EXPANDED = 220.dp
+
+/**
+ * Zijbalk zoals op Google TV: ingeklapt alleen iconen, zodat de inhoud bijna het
+ * hele scherm heeft. Zodra je er met links in komt, klapt hij uit met labels,
+ * over de inhoud heen.
+ */
 @Composable
 private fun SideNav(nav: NavHostController) {
     val entry by nav.currentBackStackEntryAsState()
@@ -318,45 +328,59 @@ private fun SideNav(nav: NavHostController) {
         ?: ENTRIES.indexOfLast { e -> e.route != Dest.HOME && nav.currentBackStack.value.any { it.destination.route == e.route } }.takeIf { it >= 0 }
         ?: 0
     val requesters = remember { ENTRIES.map { FocusRequester() } }
-    Column(
-        Modifier
-            .fillMaxHeight().width(88.dp).background(BrandColors.Surface).padding(vertical = 28.dp)
-            // Naar links de zijbalk in: altijd op het actieve tabblad landen (zoals Google TV).
-            .focusProperties { enter = { requesters[activeIndex] } }
-            .focusGroup(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Spacer(Modifier.height(40.dp))
-        ENTRIES.forEachIndexed { index, e ->
-            val interaction = remember { MutableInteractionSource() }
-            val focused by interaction.collectIsFocusedAsState()
-            val selected = index == activeIndex
-            Column(
-                Modifier
-                    .focusRequester(requesters[index])
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        when {
-                            focused -> BrandColors.Amber
-                            selected -> BrandColors.SurfaceHigh
-                            else -> androidx.compose.ui.graphics.Color.Transparent
+    var expanded by remember { mutableStateOf(false) }
+    val width by androidx.compose.animation.core.animateDpAsState(if (expanded) SIDE_NAV_EXPANDED else SIDE_NAV_COLLAPSED, label = "zijbalk")
+    Box(Modifier.fillMaxHeight()) {
+        // Schaduw over de inhoud als de zijbalk open is.
+        androidx.compose.animation.AnimatedVisibility(expanded, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+            Box(
+                Modifier.fillMaxHeight().width(560.dp)
+                    .background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to BrandColors.Ink.copy(alpha = 0.92f), 1f to androidx.compose.ui.graphics.Color.Transparent))
+            )
+        }
+        Column(
+            Modifier
+                .fillMaxHeight().width(width).background(BrandColors.Surface).padding(vertical = 28.dp, horizontal = 10.dp)
+                .onFocusChanged { expanded = it.hasFocus }
+                // Naar links de zijbalk in: altijd op het actieve tabblad landen.
+                .focusProperties { enter = { requesters[activeIndex] } }
+                .focusGroup(),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(Modifier.padding(start = 8.dp, bottom = 28.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+                nl.openschatkamer.brand.BrandMark(32.dp)
+                if (expanded) Text("OpenSchatkamer", style = MaterialTheme.typography.titleSmall, color = BrandColors.Text, maxLines = 1, modifier = Modifier.padding(start = 12.dp))
+            }
+            ENTRIES.forEachIndexed { index, e ->
+                val interaction = remember { MutableInteractionSource() }
+                val focused by interaction.collectIsFocusedAsState()
+                val selected = index == activeIndex
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .focusRequester(requesters[index])
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            when {
+                                focused -> BrandColors.Amber
+                                selected -> BrandColors.SurfaceHigh
+                                else -> androidx.compose.ui.graphics.Color.Transparent
+                            }
+                        )
+                        .clickable(interactionSource = interaction, indication = null) {
+                            nav.navigate(e.route) {
+                                popUpTo(Dest.HOME) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
-                    )
-                    .clickable(interactionSource = interaction, indication = null) {
-                        nav.navigate(e.route) {
-                            popUpTo(Dest.HOME) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                    .padding(horizontal = 4.dp, vertical = 8.dp)
-                    .width(68.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                val color = if (focused) BrandColors.Ink else if (selected) BrandColors.Amber else BrandColors.TextMuted
-                Icon(e.icon, null, tint = color, modifier = Modifier.size(24.dp))
-                Text(e.label, color = color, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, maxLines = 1)
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val color = if (focused) BrandColors.Ink else if (selected) BrandColors.Amber else BrandColors.TextMuted
+                    Icon(e.icon, e.label, tint = color, modifier = Modifier.size(24.dp))
+                    if (expanded) Text(e.label, color = color, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.padding(start = 16.dp))
+                }
             }
         }
     }

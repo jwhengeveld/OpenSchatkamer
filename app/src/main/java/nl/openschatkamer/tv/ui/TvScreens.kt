@@ -81,7 +81,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRestorer
 
-private val SCREEN_PADDING = PaddingValues(start = 40.dp, end = 48.dp, top = 24.dp, bottom = 48.dp)
+private val SCREEN_PADDING = PaddingValues(start = 32.dp, end = 40.dp, top = 20.dp, bottom = 40.dp)
 
 // ------------------------------------------------------------------- start
 
@@ -106,19 +106,22 @@ fun TvHomeScreen(
             }
         }
         CompositionLocalProvider(LocalTvFocusSink provides { focused = it }) {
-            LazyColumn(contentPadding = SCREEN_PADDING, modifier = Modifier.fillMaxSize().focusRestorer()) {
-                item { Wordmark(Modifier.padding(start = 8.dp, bottom = 8.dp), markSize = 40.dp, fontSize = 30.sp, platformSuffix = "TV") }
-                item {
-                    // Titel en gegevens van de kaart met focus.
-                    Column(Modifier.padding(start = 8.dp, top = 12.dp, bottom = 8.dp).width(720.dp).height(150.dp)) {
-                        focused?.let { f ->
-                            Text(if (f.kind == ItemKind.SERIES) "SERIE" else if (f.kind == ItemKind.STORY) "VERHAAL" else f.seriesTitle?.uppercase().orEmpty(), style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber)
-                            Text(f.title, style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            val meta = f.tvMeta()
-                            if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyLarge, color = BrandColors.TextMuted, maxLines = 1)
-                        }
-                    }
+          Column(Modifier.fillMaxSize()) {
+            // Vaste kop, zoals op Google TV: wat je geselecteerd hebt staat bovenaan,
+            // de rijen schuiven eronder door. Zo valt er nooit iets boven de rand.
+            Column(Modifier.padding(start = 40.dp, top = 24.dp, end = 40.dp).fillMaxWidth().height(156.dp)) {
+                Wordmark(markSize = 26.dp, fontSize = 20.sp, platformSuffix = "TV")
+                focused?.let { f ->
+                    Text(
+                        when (f.kind) { ItemKind.SERIES -> "SERIE"; ItemKind.STORY -> "VERHAAL"; ItemKind.PERSON -> "PERSOON"; else -> f.seriesTitle?.uppercase().orEmpty() },
+                        style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber, maxLines = 1, modifier = Modifier.padding(top = 14.dp)
+                    )
+                    Text(f.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(760.dp))
+                    val meta = f.tvMeta()
+                    if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyMedium, color = BrandColors.TextMuted, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
                 }
+            }
+            LazyColumn(contentPadding = PaddingValues(start = 32.dp, end = 40.dp, bottom = 40.dp), modifier = Modifier.fillMaxSize().focusRestorer()) {
                 when (val h = home) {
                     Load.Loading -> item { TvLoading() }
                     is Load.Failed -> item { TvMessage("Dat lukte even niet", h.message, "Opnieuw", viewModel::refresh) }
@@ -126,7 +129,7 @@ fun TvHomeScreen(
                         if (continueWatching.isNotEmpty()) {
                             item {
                                 TvRowTitle("Verder kijken")
-                                LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                                LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                                     items(continueWatching, key = { it.item.id }) { TvProgramCard(it.item, { onPlay(it.item) }, progress = it.fraction) }
                                 }
                             }
@@ -136,7 +139,7 @@ fun TvHomeScreen(
                             if (index == 1) timeTravel.forEach { t ->
                                 item(key = "tt${t.yearsAgo}") {
                                     TvRowTitle(t.spec.title)
-                                    LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                                    LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                                         items(t.items, key = { it.id }) { TvProgramCard(it, { onOpen(it) }) }
                                         item { TvPill("Meer…", { onBrowse(t.spec) }) }
                                     }
@@ -147,20 +150,7 @@ fun TvHomeScreen(
                 }
                 item { Text(UNOFFICIAL_NOTICE, style = MaterialTheme.typography.bodySmall, color = BrandColors.TextMuted, modifier = Modifier.padding(8.dp, 40.dp)) }
             }
-        }
-    }
-}
-
-@Composable
-private fun TvHero(item: SchatkamerItem, onOpen: (SchatkamerItem) -> Unit) {
-    Box(Modifier.fillMaxWidth().height(340.dp).padding(8.dp).tvFocusable({ onOpen(item) }, scaleTo = 1.02f)) {
-        TvArtwork(item.imageUrl, Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to BrandColors.Ink.copy(alpha = 0.95f), 0.6f to BrandColors.Ink.copy(alpha = 0.2f))))
-        Column(Modifier.align(Alignment.CenterStart).padding(36.dp).width(520.dp)) {
-            Text(if (item.kind == ItemKind.SERIES) "UITGELICHTE SERIE" else "UITGELICHT", style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber)
-            Text(item.title, style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val meta = item.tvMeta()
-            if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyLarge, color = BrandColors.TextMuted)
+          }
         }
     }
 }
@@ -175,7 +165,8 @@ private fun TvResultsGrid(
     onOpen: (SchatkamerItem) -> Unit,
     header: @Composable () -> Unit,
     progressOf: (String) -> Float? = { null },
-    gridState: LazyGridState = rememberLazyGridState()
+    gridState: LazyGridState = rememberLazyGridState(),
+    showSeries: Boolean = true
 ) {
     val nearEnd by remember {
         derivedStateOf {
@@ -186,11 +177,11 @@ private fun TvResultsGrid(
     LaunchedEffect(gridState, state.items.size) { snapshotFlow { nearEnd }.collect { if (it) viewModel.loadMore() } }
 
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(260.dp),
+        columns = GridCells.Adaptive(200.dp),
         state = gridState,
         contentPadding = SCREEN_PADDING,
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
-        verticalArrangement = Arrangement.spacedBy(28.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
         modifier = Modifier.fillMaxSize()
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -198,12 +189,12 @@ private fun TvResultsGrid(
             val scope = androidx.compose.runtime.rememberCoroutineScope()
             Box(Modifier.onFocusChanged { if (it.hasFocus) scope.launch { gridState.animateScrollToItem(0) } }) { header() }
         }
-        if (state.series.isNotEmpty()) {
+        if (showSeries && state.series.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
                     TvRowTitle("Series")
                     LazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        items(state.series, key = { it.id }) { TvSeriesPoster(it, { onOpen(it) }, width = 140.dp) }
+                        items(state.series, key = { it.id }) { TvSeriesPoster(it, { onOpen(it) }, width = 120.dp) }
                     }
                 }
             }
@@ -214,7 +205,7 @@ private fun TvResultsGrid(
             state.error != null -> item(span = { GridItemSpan(maxLineSpan) }) { TvMessage("Dat lukte even niet", state.error!!, "Opnieuw", viewModel::retry) }
             state.loaded && state.items.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { TvMessage("Niets gevonden", "Probeer een andere zoekterm of minder filters.") }
             else -> {
-                items(state.items, key = { it.id }) { TvProgramCard(it, { onOpen(it) }, width = 300.dp, progress = progressOf(it.id)) }
+                items(state.items, key = { it.id }) { TvProgramCard(it, { onOpen(it) }, width = androidx.compose.ui.unit.Dp.Unspecified, progress = progressOf(it.id)) }
                 if (state.isLoadingMore) item(span = { GridItemSpan(maxLineSpan) }) { TvLoading() }
             }
         }
@@ -225,7 +216,8 @@ private fun TvResultsGrid(
 private fun TvFilters(state: QueryState, viewModel: PagedQueryViewModel) {
     val f = state.filter
     Column {
-        LazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Alle filters op één rij: soort, volgorde en periode.
+        LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             item { TvPill("Alles", { viewModel.update { it.copy(material = null) } }, f.material == null) }
             item { TvPill("Video", { viewModel.update { it.copy(material = "video") } }, f.material == "video") }
             item { TvPill("Audio", { viewModel.update { it.copy(material = "audio") } }, f.material == "audio") }
@@ -233,8 +225,7 @@ private fun TvFilters(state: QueryState, viewModel: PagedQueryViewModel) {
             items(sorts) { s ->
                 TvPill(s.label, { viewModel.update { it.copy(sort = s) } }, f.sort == s || (s == SortOrder.NEWEST && f.query.isBlank() && f.sort == SortOrder.RELEVANCE))
             }
-        }
-        LazyRow(contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { Box(Modifier.padding(horizontal = 6.dp).width(2.dp).height(28.dp).background(BrandColors.Outline)) }
             item { TvPill("Alle jaren", { viewModel.update { it.copy(decade = null) } }, f.decade == null) }
             items(Decade.entries.reversed()) { d -> TvPill(d.label, { viewModel.update { it.copy(decade = d) } }, f.decade == d) }
         }
@@ -258,11 +249,11 @@ fun TvSearchScreen(viewModel: SearchViewModel, onOpen: (SchatkamerItem) -> Unit)
 
     TvResultsGrid(state, viewModel, onOpen, header = {
         Column {
-            Text("Zoeken", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
+            Text("Zoeken", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
             TvSearchField(text, viewModel::onTextChange, onSearch = { viewModel.submit() }, modifier = Modifier.padding(horizontal = 8.dp).width(720.dp))
             val chips = suggestions.ifEmpty { if (text.isBlank()) history.ifEmpty { listOf("Polygoon", "Jiskefet", "Swiebertje", "Toppop", "Elfstedentocht") } else emptyList() }
             if (chips.isNotEmpty()) {
-                LazyRow(contentPadding = PaddingValues(8.dp, 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyRow(contentPadding = PaddingValues(8.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(chips) { TvPill(it, { viewModel.submit(it) }) }
                 }
             }
@@ -357,23 +348,32 @@ fun TvSeriesScreen(
     library.series.collectAsState().value
     val following = library.isFollowing(seriesId)
     LaunchedEffect(state.total) { if (state.total > 0) library.local.markSeriesSeen(seriesId, state.total) }
-    TvResultsGrid(state, viewModel, onOpen, header = {
-        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.Top) {
-            if (data != null) TvArtwork(data.portraitUrl.ifBlank { data.imageUrl }, Modifier.width(200.dp).aspectRatio(2f / 3f).padding(end = 28.dp))
-            Column(Modifier.weight(1f)) {
+    // Brede achtergrondfoto achter de kop, zoals bij een uitzending; een staande
+    // uitsnede van een liggende foto zag er vreemd uit.
+    Box(Modifier.fillMaxSize()) {
+        if (data != null) {
+            TvArtwork(data.imageUrl.ifBlank { data.portraitUrl }, Modifier.fillMaxWidth().fillMaxHeight(0.7f).align(Alignment.TopEnd))
+            Box(Modifier.fillMaxWidth().fillMaxHeight(0.7f).align(Alignment.TopEnd).background(Brush.horizontalGradient(0f to BrandColors.Ink, 0.5f to BrandColors.Ink.copy(alpha = 0.8f), 1f to BrandColors.Ink.copy(alpha = 0.25f))))
+            Box(Modifier.fillMaxWidth().fillMaxHeight(0.7f).align(Alignment.TopEnd).background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to BrandColors.Ink)))
+        }
+        TvResultsGrid(state, viewModel, onOpen, showSeries = false, header = {
+            Column(Modifier.padding(start = 8.dp, top = 28.dp).width(820.dp)) {
                 Text("SERIE", style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber)
-                Text(data?.title.orEmpty(), style = MaterialTheme.typography.displaySmall)
-                val meta = listOfNotNull(data?.broadcaster?.ifBlank { null }, data?.period?.ifBlank { null }).joinToString(" · ")
+                Text(data?.title.orEmpty(), style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val meta = listOfNotNull(
+                    data?.broadcaster?.ifBlank { null }, data?.period?.ifBlank { null },
+                    state.total.takeIf { it > 0 }?.let { "$it afleveringen" }
+                ).joinToString(" · ")
                 if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyLarge, color = BrandColors.TextMuted)
-                if (!data?.summary.isNullOrBlank()) Text(data!!.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp).width(820.dp))
-                Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (!data?.summary.isNullOrBlank()) Text(data!!.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp))
+                Row(Modifier.padding(top = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     state.items.firstOrNull()?.let { first -> TvPill(if (state.filter.sort == SortOrder.OLDEST) "▶  Eerste aflevering" else "▶  Nieuwste aflevering", { onPlay(first) }, selected = true) }
                     if (data != null) TvPill(if (following) "✓  Volgend" else "+  Volgen", { library.toggleFollow(data.toItem(), state.total) })
                     TvPill(if (state.filter.sort == SortOrder.OLDEST) "Oudste eerst" else "Nieuwste eerst", viewModel::toggleSort)
                 }
             }
-        }
-    })
+        })
+    }
 }
 
 // --------------------------------------------------------------- uitzending
@@ -408,9 +408,9 @@ fun TvProgramScreen(
                 val scope = androidx.compose.runtime.rememberCoroutineScope()
                 LazyColumn(state = listState, contentPadding = SCREEN_PADDING, modifier = Modifier.fillMaxSize()) {
                     item {
-                        Column(Modifier.padding(start = 8.dp, top = 40.dp).width(760.dp)) {
+                        Column(Modifier.padding(start = 8.dp, top = 28.dp).width(820.dp)) {
                             p.seriesTitle?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber) }
-                            Text(p.title, style = MaterialTheme.typography.displaySmall)
+                            Text(p.title, style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             val meta = listOfNotNull(
                                 SchatkamerText.formatDate(p.date).ifBlank { null },
                                 p.durationMinutes.takeIf { it > 0 }?.let { "$it min" },
@@ -419,8 +419,8 @@ fun TvProgramScreen(
                             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodyLarge, color = BrandColors.TextMuted)
                             Row(
                                 // De knoppen bovenaan: scroll terug naar de titel.
-                                Modifier.padding(vertical = 20.dp).onFocusChanged { if (it.hasFocus) scope.launch { listState.animateScrollToItem(0) } },
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                Modifier.padding(vertical = 16.dp).onFocusChanged { if (it.hasFocus) scope.launch { listState.animateScrollToItem(0) } },
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 val resumable = progress != null && !progress.isFinished && progress.positionMs > 15_000
                                 TvPill(if (resumable) "▶  Verder kijken" else if (p.isAudio) "▶  Luisteren" else "▶  Afspelen", { onPlay(item, false) }, selected = true)
@@ -431,7 +431,7 @@ fun TvProgramScreen(
                                 TvPill(if (watched) "✓  Gezien" else "Gezien", { library.local.setWatched(item, !watched) }, selected = false)
                                 if (p.seriesId != null) TvPill("Hele serie", { onOpen(SchatkamerItem(p.seriesId!!, p.seriesTitle.orEmpty(), ItemKind.SERIES, seriesId = p.seriesId)) })
                             }
-                            if (p.description.isNotBlank()) Text(p.description, style = MaterialTheme.typography.bodyLarge, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                            if (p.description.isNotBlank()) Text(p.description, style = MaterialTheme.typography.bodyMedium, maxLines = 6, overflow = TextOverflow.Ellipsis)
                             if (p.credits.isNotEmpty()) {
                                 TvRowTitle("Wie zie of hoor je")
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

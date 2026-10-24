@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -153,9 +154,26 @@ fun Modifier.tvFocusable(onClick: () -> Unit, shape: Shape = TvShape, scaleTo: F
         )
 }
 
+/**
+ * Beeld bij een kaart. Zonder beeld (vaak bij radio) of als het niet laadt, staat
+ * er een rustig vlak met een icoon en eventueel de titel, nooit een leeg gat.
+ */
 @Composable
-fun TvArtwork(url: String?, modifier: Modifier = Modifier) {
-    Box(modifier.background(BrandColors.SurfaceHigh)) {
+fun TvArtwork(url: String?, modifier: Modifier = Modifier, audio: Boolean = false, label: String? = null) {
+    Box(
+        modifier.background(Brush.linearGradient(listOf(BrandColors.SurfaceHigh, BrandColors.Surface))),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 18.dp)) {
+            Icon(
+                if (audio) Icons.Rounded.Headphones else Icons.Rounded.Movie, null,
+                tint = (if (audio) BrandColors.Audio else BrandColors.Amber).copy(alpha = 0.7f), modifier = Modifier.size(26.dp)
+            )
+            if (!label.isNullOrBlank()) Text(
+                label, style = MaterialTheme.typography.bodySmall, color = BrandColors.TextMuted, textAlign = TextAlign.Center,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp)
+            )
+        }
         if (!url.isNullOrBlank()) AsyncImage(url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
     }
 }
@@ -167,12 +185,13 @@ fun SchatkamerItem.tvMeta(): String = listOfNotNull(
 ).joinToString(" · ")
 
 @Composable
-fun TvProgramCard(item: SchatkamerItem, onClick: () -> Unit, width: Dp = 280.dp, progress: Float? = null, modifier: Modifier = Modifier) {
-    Column(modifier.width(width)) {
+fun TvProgramCard(item: SchatkamerItem, onClick: () -> Unit, width: Dp = 240.dp, progress: Float? = null, modifier: Modifier = Modifier) {
+    // Dp.Unspecified: vult de kolom van een raster.
+    Column(if (width == Dp.Unspecified) modifier.fillMaxWidth() else modifier.width(width)) {
         val states = LocalTvItemStates.current
         val shown = progress ?: states.progress(item)
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).tvFocusable(onClick, item = item)) {
-            TvArtwork(item.imageUrl, Modifier.fillMaxSize())
+            TvArtwork(item.imageUrl, Modifier.fillMaxSize(), audio = item.isAudio, label = item.seriesTitle ?: item.broadcaster)
             Row(Modifier.align(Alignment.BottomStart).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (item.year.isNotBlank()) Badge(item.year)
                 if (item.isAudio) Badge("Audio", BrandColors.Audio)
@@ -203,10 +222,10 @@ private fun Badge(text: String, color: Color = BrandColors.Text) {
 }
 
 @Composable
-fun TvSeriesPoster(item: SchatkamerItem, onClick: () -> Unit, width: Dp = 168.dp) {
+fun TvSeriesPoster(item: SchatkamerItem, onClick: () -> Unit, width: Dp = 140.dp) {
     Column(Modifier.width(width)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).tvFocusable(onClick, item = item)) {
-            TvArtwork(item.imageUrl, Modifier.fillMaxSize())
+            TvArtwork(item.imageUrl, Modifier.fillMaxSize(), audio = item.isAudio, label = item.title)
             if (item.isAudio) Icon(Icons.Rounded.Headphones, null, tint = BrandColors.Audio, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
         }
         Spacer(Modifier.height(8.dp))
@@ -216,20 +235,21 @@ fun TvSeriesPoster(item: SchatkamerItem, onClick: () -> Unit, width: Dp = 168.dp
 
 @Composable
 fun TvStoryCard(item: SchatkamerItem, onClick: () -> Unit) {
-    Box(Modifier.width(380.dp).aspectRatio(16f / 9f).tvFocusable(onClick, item = item)) {
-        TvArtwork(item.imageUrl, Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.3f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.9f))))
-        Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
-            Text("VERHAAL", style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber)
-            Text(item.title, style = MaterialTheme.typography.headlineSmall, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    // Tekst onder het beeld, zoals de andere kaarten: rustiger en beter leesbaar.
+    Column(Modifier.width(300.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).tvFocusable(onClick, item = item)) {
+            TvArtwork(item.imageUrl, Modifier.fillMaxSize(), label = item.title)
         }
+        Spacer(Modifier.height(8.dp))
+        Text("VERHAAL", style = MaterialTheme.typography.labelSmall, color = BrandColors.Amber)
+        Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable
 fun TvPersonCard(item: SchatkamerItem, onClick: () -> Unit) {
     Column(Modifier.width(140.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        TvArtwork(item.imageUrl, Modifier.size(120.dp).tvFocusable(onClick, CircleShape))
+        TvArtwork(item.imageUrl, Modifier.size(104.dp).tvFocusable(onClick, CircleShape), label = null)
         Spacer(Modifier.height(8.dp))
         Text(item.title, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center, maxLines = 2)
     }
@@ -257,7 +277,7 @@ fun TvBroadcasterTile(name: String, imageUrl: String, onClick: () -> Unit, width
 
 @Composable
 fun TvRowTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.headlineSmall, modifier = modifier.padding(start = 8.dp, top = 28.dp, bottom = 14.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text(text, style = MaterialTheme.typography.headlineSmall, modifier = modifier.padding(start = 8.dp, top = 20.dp, bottom = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable
@@ -267,14 +287,14 @@ fun TvCatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit) {
         LazyRow(
             modifier = Modifier.focusRestorer(),
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp)
+            horizontalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             itemsIndexed(row.items, key = { _, it -> it.kind.name + it.id }) { index, item ->
                 val open = { onOpen(item) }
                 when {
                     row.layout == RowLayout.RANKED -> Row(verticalAlignment = Alignment.Bottom) {
                         Text("${index + 1}", style = MaterialTheme.typography.displaySmall.copy(fontSize = 72.sp), color = BrandColors.Amber, modifier = Modifier.padding(end = 6.dp, bottom = 40.dp))
-                        TvProgramCard(item, open, width = 250.dp)
+                        TvProgramCard(item, open, width = 220.dp)
                     }
                     item.kind == ItemKind.STORY -> TvStoryCard(item, open)
                     item.kind == ItemKind.PERSON -> TvPersonCard(item, open)
