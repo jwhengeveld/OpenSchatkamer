@@ -295,18 +295,27 @@ fun TvSearchScreen(viewModel: SearchViewModel, onOpen: (SchatkamerItem) -> Unit)
         Column {
             Text("Zoeken", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TvSearchField(text, viewModel::onTextChange, onSearch = { viewModel.submit() }, modifier = Modifier.padding(horizontal = 8.dp).width(720.dp))
+                // Staan er suggesties, dan ga je met omlaag daarnaartoe in plaats van meteen
+                // te zoeken (dat wiste de suggesties).
+                TvSearchField(
+                    text, viewModel::onTextChange, onSearch = { viewModel.submit() },
+                    modifier = Modifier.padding(horizontal = 8.dp).width(720.dp), submitOnLeave = suggestions.isEmpty()
+                )
                 TvVoiceSearchButton { viewModel.submit(it) }
-            }
-            if (state.filter.query.isNotBlank()) {
-                TvLazyRow(contentPadding = PaddingValues(8.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(TvSearchMode.entries) { m -> TvPill(m.label, { mode = m }, selected = mode == m) }
+                if (text.isNotBlank() || state.filter.query.isNotBlank()) {
+                    Box(Modifier.padding(start = 12.dp)) { TvPill("✕  Wissen", viewModel::clear) }
                 }
             }
+            // Suggesties direct onder het veld: met één keer omlaag ben je erbij.
             val chips = suggestions.ifEmpty { if (text.isBlank()) history.ifEmpty { listOf("Polygoon", "Jiskefet", "Swiebertje", "Toppop", "Elfstedentocht") } else emptyList() }
             if (chips.isNotEmpty()) {
                 TvLazyRow(contentPadding = PaddingValues(8.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(chips) { TvPill(it, { viewModel.submit(it) }) }
+                }
+            }
+            if (state.filter.query.isNotBlank()) {
+                TvLazyRow(contentPadding = PaddingValues(8.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(TvSearchMode.entries) { m -> TvPill(m.label, { mode = m }, selected = mode == m) }
                 }
             }
         }
