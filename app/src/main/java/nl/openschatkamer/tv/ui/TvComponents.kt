@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -56,7 +57,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import nl.openschatkamer.brand.BrandColors
 import nl.openschatkamer.brand.BrandFonts
 import nl.openschatkamer.brand.BroadcasterLogos
@@ -317,8 +318,7 @@ fun TvRowTitle(text: String, modifier: Modifier = Modifier) {
 fun TvCatalogRow(row: SchatkamerRow, onOpen: (SchatkamerItem) -> Unit, onMore: (() -> Unit)? = null) {
     Column {
         TvRowTitle(row.title.trim())
-        TvPivotScroll(8.dp) { LazyRow(
-            modifier = Modifier.focusRestorer(),
+        TvEdgeScroll { LazyRow(
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp)
         ) {
@@ -380,14 +380,18 @@ fun TvMoreTile(onClick: () -> Unit, portrait: Boolean = false) {
     }
 }
 
-/** Een horizontale rij met het vaste focuspunt van [TvPivotScroll]. */
+/**
+ * Een horizontale rij die scrolt zoals op Google TV (zie [TvEdgeScroll]).
+ * Bewust zonder focusRestorer: omlaag of omhoog land je op de kaart die er recht
+ * onder of boven staat, niet op de kaart die je eerder in die rij had.
+ */
 @Composable
 fun TvLazyRow(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit
-) = TvPivotScroll(8.dp) { LazyRow(modifier = modifier, contentPadding = contentPadding, horizontalArrangement = horizontalArrangement, content = content) }
+) = TvEdgeScroll { LazyRow(modifier = modifier, contentPadding = contentPadding, horizontalArrangement = horizontalArrangement, content = content) }
 
 /**
  * Tekstvelden op de tv houden de pijltjes vast (die verplaatsen de cursor).
@@ -558,9 +562,39 @@ fun TvSkeletonRows(rows: Int = 3) {
 }
 
 /**
- * Scrollen zoals op Google TV: de kaart met focus blijft op een vaste plek
- * ([lead] vanaf het begin) en de rij schuift er vloeiend onder door, in plaats
- * van pas te verspringen als de focus de rand raakt.
+ * Horizontaal scrollen zoals op Google TV: de focus loopt vrij over de kaarten
+ * die in beeld staan, en de rij schuift pas mee als de focus binnen [margin] van
+ * de rand komt. Zo zie je altijd een stukje van de volgende kaart, en blijft de
+ * focus op dezelfde plek op het scherm als je naar een andere rij gaat.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun TvEdgeScroll(margin: Dp = 96.dp, content: @Composable () -> Unit) {
+    val marginPx = with(androidx.compose.ui.platform.LocalDensity.current) { margin.toPx() }
+    val spec = remember(marginPx) {
+        object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+            @Suppress("OVERRIDE_DEPRECATION")
+            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
+                androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
+
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                val start = marginPx
+                val end = containerSize - marginPx
+                return when {
+                    size >= end - start -> offset - start
+                    offset < start -> offset - start
+                    offset + size > end -> offset + size - end
+                    else -> 0f
+                }
+            }
+        }
+    }
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides spec, content = content)
+}
+
+/**
+ * Verticaal scrollen zoals op Google TV: de rij met focus blijft op een vaste
+ * plek ([lead] vanaf de bovenkant) en de rijen schuiven er vloeiend onder door.
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -579,4 +613,84 @@ fun TvPivotScroll(lead: Dp, content: @Composable () -> Unit) {
         }
     }
     androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides spec, content = content)
+}
+
+/**
+ * De hoofdknop van een uitzending: groter dan de andere knoppen, met een
+ * afspeelicoon, zodat meteen duidelijk is hoe je de aflevering start.
+ */
+@Composable
+fun TvPlayButton(text: String, onClick: () -> Unit, subtitle: String? = null, onFocusChange: (Boolean) -> Unit = {}) {
+    var focused by remember { mutableStateOf(false) }
+    val background by androidx.compose.animation.animateColorAsState(if (focused) BrandColors.Text else BrandColors.Amber, tween(150), label = "afspelen")
+    Row(
+        Modifier
+            .onFocusChanged { focused = it.hasFocus; onFocusChange(it.hasFocus) }
+            .tvFocusable(onClick, RoundedCornerShape(50), 1.06f)
+            .background(background)
+            .padding(start = 20.dp, end = 30.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Rounded.PlayArrow, null, tint = BrandColors.Ink, modifier = Modifier.size(36.dp))
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(text, style = MaterialTheme.typography.titleMedium.copy(fontSize = 21.sp, lineHeight = 26.sp), color = BrandColors.Ink)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = BrandColors.Ink.copy(alpha = 0.7f))
+        }
+    }
+}
+
+/**
+ * Het beeld van een aflevering als een "scherm" met een grote afspeelknop erop,
+ * naast de gegevens. Licht op als de afspeelknop focus heeft.
+ */
+@Composable
+fun TvEpisodeFrame(imageUrl: String, audio: Boolean, highlighted: Boolean, progress: Float?, badge: String?, modifier: Modifier = Modifier) {
+    val scale by animateFloatAsState(if (highlighted) 1.03f else 1f, label = "beeld")
+    Box(
+        modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(16.dp))
+            .border(3.dp, if (highlighted) BrandColors.Amber else BrandColors.Outline, RoundedCornerShape(16.dp))
+    ) {
+        TvArtwork(imageUrl, Modifier.fillMaxSize(), audio = audio)
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (highlighted) 0.15f else 0.35f)))
+        Box(
+            Modifier.align(Alignment.Center).size(88.dp).clip(CircleShape)
+                .background(if (highlighted) BrandColors.Amber else Color.Black.copy(alpha = 0.55f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Rounded.PlayArrow, null, tint = if (highlighted) BrandColors.Ink else Color.White, modifier = Modifier.size(56.dp))
+        }
+        if (badge != null) Box(Modifier.align(Alignment.BottomStart).padding(12.dp)) { Badge(badge) }
+        if (progress != null && progress > 0f) {
+            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(6.dp).background(Color.Black.copy(alpha = 0.5f))) {
+                Box(Modifier.fillMaxWidth(progress).height(6.dp).background(BrandColors.Amber))
+            }
+        }
+    }
+}
+
+/**
+ * "Verras me": zoekt een willekeurige uitzending ([pick]) en opent die. Tijdens het
+ * zoeken staat er "Even zoeken…", zodat duidelijk is dat er iets gebeurt.
+ */
+@Composable
+fun TvSurpriseButton(label: String, pick: suspend () -> SchatkamerItem?, onOpen: (SchatkamerItem) -> Unit) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    TvPill(
+        when { busy -> "🎲  Even zoeken…"; failed -> "🎲  Niets gevonden, nog een keer?"; else -> "🎲  $label" },
+        {
+            if (!busy) scope.launch {
+                busy = true
+                failed = false
+                val item = runCatching { pick() }.getOrNull()
+                busy = false
+                if (item != null) onOpen(item) else failed = true
+            }
+        }
+    )
 }

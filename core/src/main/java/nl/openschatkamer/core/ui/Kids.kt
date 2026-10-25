@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import nl.openschatkamer.core.data.ItemKind
+import nl.openschatkamer.core.data.RandomPick
 import nl.openschatkamer.core.data.RowLayout
 import nl.openschatkamer.core.data.SchatkamerCatalogRepository
 import nl.openschatkamer.core.data.SchatkamerItem
@@ -98,6 +99,21 @@ class KidsViewModel(private val catalog: SchatkamerCatalogRepository) : ViewMode
             }
             .takeIf { it.size >= 3 }
             ?.let { Row(SchatkamerRow("kids-$title", title, it, RowLayout.PORTRAIT), spec) }
+    }
+
+    /**
+     * "Verras me": een willekeurige aflevering uit een van de bronnen van Kids (de
+     * secties en de klassiekers). Series die wel bij een zoekopdracht passen maar
+     * niet voor kinderen zijn, slaan we over.
+     */
+    suspend fun surprise(): SchatkamerItem? {
+        val sources = SECTIONS.map { it.second } + CLASSICS.map { (id, name) -> BrowseSpec(name, seriesId = id) }
+        repeat(4) {
+            val item = RandomPick.from(catalog, sources.random().toFilter(catalog)) ?: return@repeat
+            val series = item.seriesTitle.orEmpty().uppercase()
+            if (EXCLUDED_TITLES.none { series.startsWith(it) }) return item
+        }
+        return null
     }
 
     /** "PAULUS DE BOSKABOUTER (Jean Dulieu)" → "Paulus de Boskabouter". */
