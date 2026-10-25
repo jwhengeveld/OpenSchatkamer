@@ -428,28 +428,46 @@ fun TvInputField(
     keyboardType: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text,
     imeAction: androidx.compose.ui.text.input.ImeAction = androidx.compose.ui.text.input.ImeAction.Done,
     leading: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    /** Of omhoog/omlaag uit het veld ook meteen [onSubmit] doet (anders alleen sluiten). */
+    submitOnLeave: Boolean = imeAction == androidx.compose.ui.text.input.ImeAction.Search,
     onSubmit: () -> Unit = {}
 ) {
     var editing by remember { mutableStateOf(false) }
+    // Met een TextFieldValue staat de cursor bij het openen achteraan, zodat je
+    // meteen kunt wissen of verder typen (met een losse String stond hij vooraan).
+    var field by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value)) }
+    if (field.text != value) field = androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))
     val fieldFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val buttonFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     var wasEditing by remember { mutableStateOf(false) }
+    // Verlaat je het veld met omhoog/omlaag, dan gaat de focus ook echt die kant op
+    // (naar de suggesties eronder) in plaats van terug op het veld.
+    var leaveDirection by remember { mutableStateOf<androidx.compose.ui.focus.FocusDirection?>(null) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     fun stopEditing(submit: Boolean) {
         keyboard?.hide()
         editing = false
         if (submit) onSubmit()
     }
     androidx.compose.runtime.LaunchedEffect(editing) {
-        if (editing) { wasEditing = true; runCatching { fieldFocus.requestFocus(); keyboard?.show() } }
-        else if (wasEditing) runCatching { buttonFocus.requestFocus() }
+        if (editing) {
+            wasEditing = true
+            field = androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))
+            runCatching { fieldFocus.requestFocus(); keyboard?.show() }
+        }
+        else if (wasEditing) runCatching {
+            buttonFocus.requestFocus()
+            leaveDirection?.let { kotlinx.coroutines.delay(50); focusManager.moveFocus(it) }
+            leaveDirection = null
+        }
     }
     Column(modifier) {
         if (label != null) Text(label, style = MaterialTheme.typography.labelSmall, color = BrandColors.TextMuted, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
         if (editing) {
             androidx.activity.compose.BackHandler { stopEditing(submit = false) }
             androidx.compose.material3.OutlinedTextField(
-                value = value, onValueChange = onValueChange, singleLine = true,
+                value = field, onValueChange = { field = it; if (it.text != value) onValueChange(it.text) }, singleLine = true,
                 placeholder = { Text(placeholder) },
                 visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
@@ -463,7 +481,10 @@ fun TvInputField(
                     .focusRequester(fieldFocus)
                     .onPreviewKeyEvent { event ->
                         val vertical = event.key == androidx.compose.ui.input.key.Key.DirectionDown || event.key == androidx.compose.ui.input.key.Key.DirectionUp
-                        if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && vertical) { stopEditing(submit = imeAction == androidx.compose.ui.text.input.ImeAction.Search); true } else false
+                        if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && vertical) {
+                            leaveDirection = if (event.key == androidx.compose.ui.input.key.Key.DirectionDown) androidx.compose.ui.focus.FocusDirection.Down else androidx.compose.ui.focus.FocusDirection.Up
+                            stopEditing(submit = submitOnLeave); true
+                        } else false
                     }
             )
         } else {
@@ -495,11 +516,12 @@ fun TvInputField(
 }
 
 @Composable
-fun TvSearchField(text: String, onTextChange: (String) -> Unit, onSearch: () -> Unit, modifier: Modifier = Modifier) =
+fun TvSearchField(text: String, onTextChange: (String) -> Unit, onSearch: () -> Unit, modifier: Modifier = Modifier, submitOnLeave: Boolean = true) =
     TvInputField(
         text, onTextChange, "Zoeken: programma, persoon, onderwerp of jaar", modifier,
         imeAction = androidx.compose.ui.text.input.ImeAction.Search,
         leading = androidx.compose.material.icons.Icons.Rounded.Search,
+        submitOnLeave = submitOnLeave,
         onSubmit = onSearch
     )
 
