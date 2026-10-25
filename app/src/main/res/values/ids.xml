@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Knop voor het beeldformaat in de bedieningsbalk van de speler. -->
+    <item name="tv_zoom_button" type="id" />
+    <!-- Vorige/volgende aflevering en terug naar het begin, in de middelste rij. -->
+    <item name="tv_previous_episode" type="id" />
+    <item name="tv_next_episode" type="id" />
+    <item name="tv_restart" type="id" />
+    <!-- Bewaart de oorspronkelijke voorgrond van een knop onder de focusring. -->
+    <item name="tv_saved_foreground" type="id" />
+</resources>

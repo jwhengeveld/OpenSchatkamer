@@ -83,6 +83,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import nl.openschatkamer.brand.BrandColors
 import nl.openschatkamer.core.data.ItemKind
+import nl.openschatkamer.core.data.RandomPick
 import nl.openschatkamer.core.data.SchatkamerItem
 import nl.openschatkamer.core.ui.BrowseSpec
 import nl.openschatkamer.core.ui.BrowseViewModel
@@ -272,6 +273,7 @@ class MainActivity : ComponentActivity() {
                     focusRegistry.requesters[target]?.let { r -> runCatching { r.requestFocus() } }
                     kotlinx.coroutines.delay(120)
                 }
+                if (userMoved) return@LaunchedEffect
             }
             if (target == null || focusRegistry.focusedKey != target) {
                 kotlinx.coroutines.delay(600)
@@ -286,6 +288,9 @@ class MainActivity : ComponentActivity() {
             var stableSince = 0L
             while (!userMoved && System.currentTimeMillis() < until) {
                 kotlinx.coroutines.delay(150)
+                // Opnieuw kijken na het wachten: ging je net zelf naar links, dan is de
+                // zijbalk jouw keuze en mag hij niet meteen weer dichtklappen.
+                if (userMoved) break
                 if (contentHasFocus && !sideNavHasFocus) {
                     if (stableSince == 0L) stableSince = System.currentTimeMillis()
                     if (System.currentTimeMillis() - stableSince > 1_500) break
@@ -327,7 +332,9 @@ class MainActivity : ComponentActivity() {
                         .focusGroup()
                 ) {
                     NavHost(nav, startDestination = Dest.HOME) {
-                        composable(Dest.HOME) { TvHomeScreen(homeViewModel, continueWatching, timeTravel, open, { play(it, false) }, browse) }
+                        composable(Dest.HOME) {
+                            TvHomeScreen(homeViewModel, continueWatching, timeTravel, open, { play(it, false) }, browse, onSurprise = { RandomPick.archive(app.catalog) })
+                        }
                         composable(Dest.SEARCH) {
                             val vm: SearchViewModel = viewModel { SearchViewModel(app.catalog, applicationContext) }
                             LaunchedEffect(searchRequest) {
@@ -349,7 +356,7 @@ class MainActivity : ComponentActivity() {
                         composable(Dest.SERIES, listOf(navArgument("id") { type = NavType.StringType })) { e ->
                             val id = e.arguments?.getString("id").orEmpty()
                             val vm: SeriesViewModel = viewModel { SeriesViewModel(app.catalog, id) }
-                            TvSeriesScreen(vm, id, library, open) { play(it, false) }
+                            TvSeriesScreen(vm, id, library, open, { play(it, false) }, onSurprise = { RandomPick.episode(app.catalog, id) })
                         }
                         composable(Dest.PROGRAM, listOf(navArgument("id") { type = NavType.StringType })) { e ->
                             val id = e.arguments?.getString("id").orEmpty()
@@ -479,10 +486,21 @@ private fun SideNav(nav: NavHostController, canExpand: Boolean = true) {
                             }
                         )
                         .clickable(interactionSource = interaction, indication = null) {
-                            nav.navigate(e.route) {
-                                popUpTo(Dest.HOME) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                            when {
+                                e.route == current -> Unit
+                                // Start: altijd een verse startpagina, bovenaan. Met restoreState
+                                // kwam de aflevering of serie waar je was meteen terug.
+                                e.route == Dest.HOME -> {
+                                    nav.popBackStack(Dest.HOME, inclusive = true)
+                                    nav.navigate(Dest.HOME)
+                                }
+                                // Het tabblad waar je al in zit: terug naar het begin ervan.
+                                index == activeIndex && nav.popBackStack(e.route, inclusive = false) -> Unit
+                                else -> nav.navigate(e.route) {
+                                    popUpTo(Dest.HOME) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
                         }
                         .padding(horizontal = 14.dp, vertical = 12.dp),

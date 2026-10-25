@@ -38,7 +38,15 @@ Een eigen sectie (tabblad op de telefoon, item in de zijbalk op tv) met kinderpr
 - **Schooltv**: alles van de omroepen NOT en TELEAC, gegroepeerd per serie (meeste uitzendingen eerst), zodat nieuwe series vanzelf meekomen.
 - Rijen uit de zoekdienst: poppenspel, drama voor de jeugd, het Jeugdjournaal en Het Klokhuis.
 - **Weekkeuze** (`WeeklyPick`): de eigen rijen van de app (Kids en de onderwerpen in Ontdekken) tonen elke week een andere selectie: een ander deel van de resultaten, in een andere volgorde. De hele week blijft het hetzelfde, op elk apparaat. Rijen die van de site zelf komen, wisselen daar al en blijven zoals ze zijn.
+- **Verras me** opent een willekeurig kinderprogramma uit een van deze bronnen (`KidsViewModel.surprise`).
 - Elke rij heeft **Kijk meer**: het bladerscherm met precies die zoekopdracht (`BrowseSpec` kan ook meerdere archiefomroepen en een serie aan).
+
+## Verras me
+
+Op de tv opent **Verras me** een willekeurige uitzending (`core/data/RandomPick.kt`):
+- op Start uit het hele archief: eerst een willekeurig jaar vanaf 1920, dan een willekeurige uitzending uit dat jaar (de zoekdienst laat maar 10.000 resultaten zien, anders kwamen alleen de nieuwste aan bod);
+- in Kids alleen kinderprogramma's;
+- bij een serie met meer dan 50 afleveringen (zoals Het Klokhuis en het Jeugdjournaal) een willekeurige aflevering van die serie.
 
 ## Afspelen
 
@@ -79,11 +87,11 @@ Elke bron heeft een terugvalroute; `SourceHealth` houdt bij welke route werkt (v
 
 - **Systeem**: het systeem-opstartscherm, predictive back, themed icons (Android 13+), deelmenu, mediasessie en -melding, PiP, haptics bij lang indrukken.
 - **Telefoon**: launcher-snelkoppelingen (Zoeken, Mijn lijst), deep links (`openschatkamer://…` en links naar de site via "Openen met") en spraakzoeken.
-- **Speler**: storyboard-miniaturen bij het spoelen, afspeelsnelheid en automatisch de volgende aflevering.
+- **Speler**: storyboard-miniaturen bij het spoelen, afspeelsnelheid en automatisch de volgende aflevering. Op de tv staan in de middelste rij ook knoppen voor de vorige en volgende aflevering en terug naar het begin; met ▲ kom je bij die knoppen, met ▼ bij de knoppen rechtsonder (beeldformaat, ondertiteling, instellingen). Het beeldformaat (passend, 110/125/133% inzoomen tegen ingebakken zwarte randen, scherm vullen of uitrekken); de keuze blijft bewaard. Bij audio staat er in plaats van een zwart scherm een eigen achtergrond: het beeld van de uitzending (of het omroeplogo), titel, gegevens, omschrijving en bewegende balkjes. De eerste keer Terug toont de bediening; nog een keer Terug sluit de speler.
 - **TV**:
   - Op het startscherm van Google TV: "Verder kijken" (Watch Next) en een eigen kanaal met uitgelichte uitzendingen.
   - Zoeken vanuit Google TV en de Assistent (`SearchProvider`, alleen leesbaar voor het systeem), de zoekknop op de afstandsbediening en spraakzoeken.
-  - Layout zoals Google TV: een inklapbare zijbalk, een vaste kop die rustig meeloopt met de focus, en rijen die onder een vast focuspunt doorschuiven (`TvPivotScroll`).
+  - Layout zoals Google TV: een inklapbare zijbalk, een vaste kop die rustig meeloopt met de focus, rijen die verticaal onder een vast focuspunt doorschuiven (`TvPivotScroll`), en horizontaal een focus die vrij over de kaarten loopt en pas bij de rand meeschuift (`TvEdgeScroll`). Omlaag of omhoog land je op de kaart recht eronder of erboven. Start in de zijbalk opent altijd een verse startpagina; het tabblad waar je al in zit brengt je terug naar het begin ervan.
   - De hele interface staat op 80% schaal (`TV_UI_SCALE`), zodat er meer tegelijk in beeld past.
   - Focusherstel per rij, een actiemenu via lang OK en laadvlakken in plaats van een laadrondje.
 - **Tablet**: lijsten in 2 of 3 kolommen, en op de uitzendingspagina staan beeld en titel naast elkaar.
