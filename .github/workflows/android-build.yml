@@ -31,6 +31,10 @@ jobs:
       - name: Grant Execute Permission to Gradlew
         run: chmod +x gradlew
 
+      # gradle.properties wijst naar de Homebrew-JDK op de Mac; op de runner bestaat die niet.
+      - name: Lokale Java-pin uit gradle.properties halen
+        run: sed -i '/^org.gradle.java.home=/d' gradle.properties
+
       - name: Restore Signing Key
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
