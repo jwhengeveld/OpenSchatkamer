@@ -21,9 +21,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: android-actions/setup-android@v3
+      # De runner heeft al een Android SDK (ANDROID_HOME); setup-android@v3 crasht sinds 10-2026.
+      - name: Lokale Java-pin uit gradle.properties halen
+        run: sed -i '/^org.gradle.java.home=/d' gradle.properties
       - name: Live contracttests
-        run: ./gradlew :core:testDebugUnitTest -Plive --tests '*LiveSiteContractTest*' -Porg.gradle.java.home="$JAVA_HOME"
+        run: ./gradlew :core:testDebugUnitTest -Plive --tests '*LiveSiteContractTest*'
       - name: Issue bij een fout
         if: failure()
         uses: actions/github-script@v7
