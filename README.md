@@ -51,6 +51,7 @@ Op de tv opent **Verras me** een willekeurige uitzending (`core/data/RandomPick.
 ## Afspelen
 
 - HLS (CMAF) met **Widevine via EZDRM**, net als de website.
+- **DRM-terugval**: geeft de hardwarematige Widevine-keten van een toestel een fout (kapotte L1, beveiligde decoder, HDCP), dan probeert de speler het nog een keer met software-Widevine (L3); de licentie staat dat toe. De route die werkt wordt per toestel onthouden (`DrmFallback`). Foutmeldingen tonen de foutcode van de speler.
 - De CloudFront-parameters in het stream-adres zijn eigenlijk cookies. Lokaal sturen we ze als `Cookie`-header mee op elk verzoek.
 - Alleen het programma zelf wordt getoond: de archiefband wordt geknipt op `start`/`end` van de site.
 - Een handtekening verloopt na ongeveer 22 uur. De app haalt streams pas bij het afspelen op en ververst ze automatisch, ook na een 403.
