@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package nl.openschatkamer.tv.ui
 
@@ -76,6 +76,8 @@ import nl.openschatkamer.core.data.AnyList
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.relocation.bringIntoViewResponder
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -214,8 +216,23 @@ private fun TvResultsGrid(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             // Focus in de kop (zoekveld, knoppen): helemaal naar boven, zodat titel en veld zichtbaar zijn.
+            // Elk knopje of veld in de kop vraagt de hele kop in beeld; anders zet de
+            // pivot-regel het knopje 96 dp onder de rand en valt de titel weg.
             val scope = androidx.compose.runtime.rememberCoroutineScope()
-            Box(Modifier.onFocusChanged { if (it.hasFocus) scope.launch { gridState.animateScrollToItem(0) } }) { header() }
+            var headerSize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
+            Box(
+                Modifier
+                    .onSizeChanged { headerSize = androidx.compose.ui.geometry.Size(it.width.toFloat(), it.height.toFloat()) }
+                    .bringIntoViewResponder(remember {
+                        object : androidx.compose.foundation.relocation.BringIntoViewResponder {
+                            override fun calculateRectForParent(localRect: androidx.compose.ui.geometry.Rect) =
+                                if (headerSize == androidx.compose.ui.geometry.Size.Zero) localRect
+                                else androidx.compose.ui.geometry.Rect(androidx.compose.ui.geometry.Offset.Zero, headerSize)
+                            override suspend fun bringChildIntoView(localRect: () -> androidx.compose.ui.geometry.Rect?) = Unit
+                        }
+                    })
+                    .onFocusChanged { if (it.hasFocus) scope.launch { gridState.animateScrollToItem(0) } }
+            ) { header() }
         }
         if (mode == TvSearchMode.SERIES) {
             // Alleen series, als raster van posters.
