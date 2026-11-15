@@ -12,6 +12,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.DrmSessionManager
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import nl.openschatkamer.core.BuildConfig
@@ -27,6 +31,11 @@ import nl.openschatkamer.core.data.SchatkamerHttpClient
  * - Widevine via de EZDRM-licentieserver die de website ook gebruikt.
  * - Alleen het programma zelf wordt getoond: de archiefband begint vaak met
  *   aanloop en eindigt met zwart; [PlayableMedia.stream] geeft het begin en eind.
+ * - Terugval bij DRM-fouten: sommige tv's en boxen hebben een kapotte of te
+ *   strenge hardwarematige Widevine-keten (L1, beveiligde decoder, HDCP). De
+ *   licentie van de Schatkamer staat ook software-Widevine (L3) toe, dus na een
+ *   DRM-fout proberen we het nog eens met L3. Werkt dat, dan onthoudt het
+ *   toestel dat en begint het voortaan meteen met L3 (zie [DrmFallback]).
  */
 @OptIn(UnstableApi::class)
 object SchatkamerPlayback {
@@ -104,7 +113,7 @@ object SchatkamerPlayback {
         return builder.build()
     }
 
-    fun mediaSource(context: Context, media: PlayableMedia): MediaSource {
+    fun mediaSource(context: Context, media: PlayableMedia, forceL3: Boolean = false): MediaSource {
         val headers = buildMap {
             put("Origin", SchatkamerHttpClient.BASE_URL)
             put("Referer", "${SchatkamerHttpClient.BASE_URL}/")
@@ -116,14 +125,39 @@ object SchatkamerPlayback {
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(20_000)
             .setDefaultRequestProperties(headers)
-        return DefaultMediaSourceFactory(context.applicationContext)
-            .setDataSourceFactory(http)
-            .createMediaSource(mediaItem(media))
+        val factory = DefaultMediaSourceFactory(context.applicationContext).setDataSourceFactory(http)
+        if (forceL3 && media.stream.drmProtected) {
+            val drm = softwareWidevine(http)
+            factory.setDrmSessionManagerProvider { drm }
+        }
+        return factory.createMediaSource(mediaItem(media))
     }
 
-    /** Start [media] op [player], vanaf de opgeslagen positie (binnen het programma). */
-    fun play(context: Context, player: ExoPlayer, media: PlayableMedia, playWhenReady: Boolean = true) {
-        player.setMediaSource(mediaSource(context, media), media.resumePositionMs.coerceAtLeast(0))
+    /** Widevine zonder hardwareketen (L3): ontsleutelen en decoderen buiten de beveiligde zone. */
+    private fun softwareWidevine(http: DefaultHttpDataSource.Factory): DrmSessionManager {
+        val callback = HttpMediaDrmCallback(BuildConfig.WIDEVINE_LICENSE_URL, http)
+        return DefaultDrmSessionManager.Builder()
+            .setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID) { uuid ->
+                FrameworkMediaDrm.newInstance(uuid).apply {
+                    runCatching { setPropertyString("securityLevel", "L3") }
+                }
+            }
+            .setPlayClearSamplesWithoutKeys(true)
+            .build(callback)
+    }
+
+    /**
+     * Start [media] op [player], vanaf de opgeslagen positie (binnen het programma).
+     * Zonder [forceL3] kiest het toestel zelf: L3 als het eerder bleek dat alleen dat werkt.
+     */
+    fun play(
+        context: Context,
+        player: ExoPlayer,
+        media: PlayableMedia,
+        playWhenReady: Boolean = true,
+        forceL3: Boolean = DrmFallback.prefersL3(context)
+    ) {
+        player.setMediaSource(mediaSource(context, media, forceL3), media.resumePositionMs.coerceAtLeast(0))
         player.prepare()
         player.playWhenReady = playWhenReady
     }

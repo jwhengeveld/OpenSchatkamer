@@ -84,6 +84,7 @@ import nl.openschatkamer.core.data.SortOrder
 import nl.openschatkamer.core.playback.StoryboardLoader
 import nl.openschatkamer.core.data.SchatkamerItem
 import nl.openschatkamer.core.data.SchatkamerVideoRepository
+import nl.openschatkamer.core.playback.DrmFallback
 import nl.openschatkamer.core.playback.SchatkamerPlayback
 import java.io.IOException
 
@@ -220,6 +221,9 @@ fun TvPlayer(
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var attempt by remember { mutableIntStateOf(0) }
+    // Software-Widevine (L3): meteen als dit toestel dat eerder nodig had, anders na een DRM-fout.
+    var softwareDrm by remember { mutableStateOf(DrmFallback.prefersL3(context)) }
+    var drmRetried by remember { mutableStateOf(false) }
     var next by remember { mutableStateOf<SchatkamerItem?>(null) }
     var previous by remember { mutableStateOf<SchatkamerItem?>(null) }
     var countdown by remember { mutableStateOf<Int?>(null) }
@@ -280,7 +284,7 @@ fun TvPlayer(
         loading = true
         val resume = if (fromStart && attempt == 0) 0L else progress.resumePosition(item.id)
         video.playable(item.id, resume)
-            .onSuccess { m -> media = m; SchatkamerPlayback.play(context, player, m) }
+            .onSuccess { m -> media = m; SchatkamerPlayback.play(context, player, m, forceL3 = softwareDrm) }
             .onFailure { e -> loading = false; error = describe(e) }
     }
 
@@ -289,6 +293,7 @@ fun TvPlayer(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 loading = state == Player.STATE_BUFFERING
+                if (state == Player.STATE_READY && media?.stream?.drmProtected == true) DrmFallback.remember(context, softwareDrm)
                 if (state == Player.STATE_ENDED) { save(); if (next != null) countdown = 10 else onClose() }
             }
 
@@ -301,6 +306,14 @@ fun TvPlayer(
                 // Verlopen handtekening: één keer een verse stream ophalen en verder op dezelfde plek.
                 if ((e.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode == 403 && !refreshed) {
                     refreshed = true
+                    save()
+                    attempt++
+                    return
+                }
+                // DRM-fout: nog één keer met de andere Widevine-route (hardware ↔ software/L3).
+                if (!drmRetried && DrmFallback.canHelp(e)) {
+                    drmRetried = true
+                    softwareDrm = !softwareDrm
                     save()
                     attempt++
                     return
@@ -672,8 +685,8 @@ private fun ZoomMenu(current: TvZoom) {
 private fun describe(e: Throwable): String = when {
     e is NotPlayableException -> e.message!!
     e is IOException || e.cause is IOException -> "Geen verbinding met De Schatkamer. Controleer het netwerk van de tv."
-    e is PlaybackException && e.errorCode in 6000..6999 -> "Deze tv kan het beveiligde programma niet afspelen (Widevine DRM)."
-    e is PlaybackException -> "Afspelen lukt niet (${e.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})."
+    e is PlaybackException && e.errorCode in 6000..6999 -> "Deze tv kan het beveiligde programma niet afspelen (Widevine DRM: ${DrmFallback.code(e)})."
+    e is PlaybackException -> "Afspelen lukt niet (${DrmFallback.code(e)})."
     else -> e.message ?: "Er ging iets mis bij het afspelen."
 }
 

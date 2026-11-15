@@ -38,6 +38,7 @@ import nl.openschatkamer.core.data.SchatkamerCatalogRepository
 import nl.openschatkamer.core.data.SortOrder
 import nl.openschatkamer.core.data.SchatkamerItem
 import nl.openschatkamer.core.data.SchatkamerVideoRepository
+import nl.openschatkamer.core.playback.DrmFallback
 import nl.openschatkamer.core.playback.CastPayload
 import nl.openschatkamer.core.playback.SchatkamerPlayback
 import nl.openschatkamer.mobile.MainActivity
@@ -120,6 +121,8 @@ class PlaybackManager(
     fun play(item: SchatkamerItem, fromStart: Boolean = false) {
         loadJob?.cancel()
         refreshedAfter403 = false
+        drmRetried = false
+        softwareDrm = DrmFallback.prefersL3(appContext)
         _state.update {
             it.copy(item = item, media = null, isLoading = true, isPlaying = false, error = null, positionMs = 0, durationMs = 0)
         }
@@ -265,7 +268,7 @@ class PlaybackManager(
 
     private fun loadLocally(media: PlayableMedia, playWhenReady: Boolean) {
         val player = ensureLocal()
-        SchatkamerPlayback.play(appContext, player, media, playWhenReady)
+        SchatkamerPlayback.play(appContext, player, media, playWhenReady, forceL3 = softwareDrm)
         // Gewone start: Media3 maakt de service zelf voorgrond zodra er echt iets speelt.
         runCatching { appContext.startService(Intent(appContext, SchatkamerPlaybackService::class.java)) }
     }
@@ -284,6 +287,9 @@ class PlaybackManager(
                     isLoading = playbackState == Player.STATE_BUFFERING,
                     durationMs = player.duration.takeIf { d -> d > 0 } ?: it.durationMs
                 )
+            }
+            if (playbackState == Player.STATE_READY && _state.value.media?.stream?.drmProtected == true) {
+                DrmFallback.remember(appContext, softwareDrm)
             }
             if (playbackState == Player.STATE_ENDED) {
                 saveProgress(force = true)
@@ -306,10 +312,20 @@ class PlaybackManager(
                 }
                 return
             }
+            // DRM-fout: nog één keer met de andere Widevine-route (hardware ↔ software/L3).
+            if (media != null && !drmRetried && DrmFallback.canHelp(error)) {
+                drmRetried = true
+                softwareDrm = !softwareDrm
+                val position = _player.value?.currentPosition ?: media.resumePositionMs
+                loadLocally(media.copy(resumePositionMs = position), playWhenReady = true)
+                return
+            }
             _state.update { it.copy(isLoading = false, isPlaying = false, error = describe(error)) }
         }
     }
     private var refreshedAfter403 = false
+    private var drmRetried = false
+    private var softwareDrm = false
 
     // ---------------------------------------------------------------- casten
 
@@ -473,8 +489,8 @@ class PlaybackManager(
         error is IOException || error.cause is IOException ->
             "Geen verbinding met De Schatkamer. Controleer je internet en probeer het opnieuw."
         error is PlaybackException && error.errorCode in 6000..6999 ->
-            "Dit programma is beveiligd en kan op dit toestel niet worden afgespeeld (DRM)."
-        error is PlaybackException -> "Afspelen lukt niet: ${error.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')}."
+            "Dit programma is beveiligd en kan op dit toestel niet worden afgespeeld (DRM: ${DrmFallback.code(error)})."
+        error is PlaybackException -> "Afspelen lukt niet: ${DrmFallback.code(error)}."
         else -> error.message ?: "Er ging iets mis bij het afspelen."
     }
 
